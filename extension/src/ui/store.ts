@@ -321,6 +321,7 @@ export class Store {
           throw new BackendError("INCOMPATIBLE", "Incompatible backend.");
         }
         this.client = client;
+        this.startKeepalive();
         this.set({ backend: { status: "ready", version: health.version, models, manifest: manifest.manifest } });
         if (health.orphansCleaned) this.toast("info", "Cleaned up temporary files from an unfinished job.");
         this.log("info", `backend ready ${health.version} on port ${info.port}`);
@@ -340,6 +341,21 @@ export class Store {
       }
     })();
     return this.startPromise;
+  }
+
+  private keepalive: number | null = null;
+  /** The backend exits after 10 idle minutes; ping while the panel is open. */
+  private startKeepalive() {
+    if (this.keepalive) clearInterval(this.keepalive);
+    this.keepalive = window.setInterval(() => {
+      if (!this.client) return;
+      this.client.health().catch(() => {
+        if (this.state.job.phase !== "running" && this.state.backend.status === "ready") {
+          this.client = null;
+          this.set({ backend: { ...this.state.backend, status: "offline" } });
+        }
+      });
+    }, 60000);
   }
 
   async stopBackend() {

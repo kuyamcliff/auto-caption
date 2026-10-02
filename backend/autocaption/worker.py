@@ -1,7 +1,8 @@
 """Worker process: owns the ML models, runs one job at a time.
 
-Protocol: JSON lines. Commands arrive on stdin, events leave on the original
-stdout. Library prints are redirected to stderr so they cannot corrupt the
+Protocol: JSON lines. Commands arrive over an authenticated 127.0.0.1 socket
+opened by the server (never stdin: on Windows a thread blocked on a pipe read
+stalls other I/O in the process); events leave on the original stdout. Library prints are redirected to stderr so they cannot corrupt the
 protocol. Cancellation is cooperative (checked between batches/segments); the
 server kills this process if it does not acknowledge quickly.
 """
@@ -10,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import socket
 import sys
 import threading
 import traceback
@@ -38,8 +40,14 @@ def main() -> int:
     cancel_ids: set[str] = set()
     decoders: list = []
 
+    # Command channel: authenticated localhost socket opened by the server.
+    sock = socket.create_connection(("127.0.0.1", int(os.environ["AUTOCAPTION_WORKER_PORT"])), timeout=60)
+    sock.settimeout(None)
+    sock.sendall((os.environ["AUTOCAPTION_WORKER_KEY"] + "\n").encode("ascii"))
+    inbox = sock.makefile("r", encoding="utf-8")
+
     def reader() -> None:
-        for line in sys.stdin:
+        for line in inbox:
             line = line.strip()
             if not line:
                 continue
@@ -56,7 +64,7 @@ def main() -> int:
                         pass
             else:
                 commands.put(msg)
-        commands.put(None)  # parent went away
+        commands.put(None)  # server went away: socket closed
 
     threading.Thread(target=reader, daemon=True).start()
 

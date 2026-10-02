@@ -34,7 +34,7 @@ def _ffmpeg() -> str:
 
 def ffmpeg_version() -> str:
     out = subprocess.run([_ffmpeg(), "-hide_banner", "-version"], capture_output=True, text=True,
-                         timeout=30, creationflags=_NO_WINDOW)
+                         stdin=subprocess.DEVNULL, timeout=30, creationflags=_NO_WINDOW)
     first = (out.stdout or "").splitlines()[0] if out.stdout else ""
     parts = first.split()
     return parts[2] if len(parts) > 2 else first
@@ -54,7 +54,8 @@ def decode(path: Path, start: float | None = None, duration: float | None = None
     if duration is not None and duration > 0:
         cmd += ["-t", f"{duration:.6f}"]
     cmd += ["-vn", "-sn", "-dn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-acodec", "pcm_f32le", "-"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=_NO_WINDOW)
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            creationflags=_NO_WINDOW)
     if proc_holder is not None:
         proc_holder.append(proc)
     chunks = []
@@ -79,7 +80,8 @@ def decode(path: Path, start: float | None = None, duration: float | None = None
 def probe_has_audio(path: Path) -> bool:
     """Cheap check used before decoding: does the file contain an audio stream?"""
     cmd = [_ffmpeg(), "-hide_banner", "-nostdin", "-i", str(path)]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=_NO_WINDOW)
+    out = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60,
+                         creationflags=_NO_WINDOW)
     return "Audio:" in (out.stderr or "")
 
 

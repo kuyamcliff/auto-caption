@@ -146,7 +146,13 @@ def stage_input(src: Path, temp_root: Path) -> Path:
 def to_backend_path(p: Path, wine: bool) -> str:
     if not wine:
         return str(p)
-    return "Z:" + str(p).replace("/", "\\")
+    # Paths inside the Wine prefix are on C:, like %TEMP% on real Windows.
+    prefix = os.environ.get("WINEPREFIX", "")
+    drive_c = str(Path(prefix) / "drive_c") if prefix else ""
+    s = str(p)
+    if drive_c and s.startswith(drive_c + "/"):
+        return "C:" + s[len(drive_c):].replace("/", "\\")
+    return "Z:" + s.replace("/", "\\")
 
 
 def main() -> int:

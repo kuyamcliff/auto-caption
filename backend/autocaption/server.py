@@ -321,7 +321,10 @@ def make_handler(app: App):
     return Handler
 
 
-def serve(port: int = 0, idle_exit_sec: int = 4 * 3600) -> int:
+def serve(port: int = 0, idle_exit_sec: int = 600) -> int:
+    """Serve until shutdown. The panel pings /health every minute while open;
+    with no requests and no job for idle_exit_sec the backend exits, so a
+    reloaded or closed panel never leaves an orphaned engine behind."""
     from . import logs
 
     paths.configure_offline_environment()
@@ -349,7 +352,9 @@ def serve(port: int = 0, idle_exit_sec: int = 4 * 3600) -> int:
         logger.info("parent closed stdin; shutting down")
         app.stop()
 
-    if os.environ.get("AUTOCAPTION_DETACHED") != "1":
+    # On Windows the launcher watches the parent process and its job object
+    # ends us; reading stdin there would stall other I/O in this process.
+    if os.environ.get("AUTOCAPTION_DETACHED") != "1" and sys.platform != "win32":
         threading.Thread(target=parent_watch, daemon=True).start()
 
     def idle_watch():

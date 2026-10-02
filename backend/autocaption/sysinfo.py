@@ -67,7 +67,8 @@ def gpu_info() -> dict:
     if smi:
         try:
             out = subprocess.run([smi, "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"],
-                                 capture_output=True, text=True, timeout=10, creationflags=_NO_WINDOW)
+                                 capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=10,
+                                 creationflags=_NO_WINDOW)
             line = (out.stdout or "").strip().splitlines()
             if line:
                 parts = [p.strip() for p in line[0].split(",")]

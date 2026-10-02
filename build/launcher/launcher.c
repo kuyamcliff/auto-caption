@@ -4,13 +4,16 @@
  * Runs  <dir>\runtime\python.exe -X utf8 -I -m autocaption <args...>
  * with stdio inherited, so the panel talks to the backend through this
  * process. A job object with KILL_ON_JOB_CLOSE guarantees the Python process
- * tree exits when this launcher exits (AE closed, panel reloaded, crash).
+ * tree exits when this launcher exits. The launcher also watches its own
+ * parent (After Effects' CEP helper): when the parent goes away (AE closed,
+ * panel reloaded, crash) the launcher exits and the job object ends Python.
  * Environment variables that could make Python load anything from outside
  * the backend folder are cleared.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlwapi.h>
+#include <tlhelp32.h>
 #include <stdio.h>
 #include <wchar.h>
 
@@ -30,6 +33,21 @@ static HANDLE std_or_nul(DWORD which, DWORD access) {
             h = dup;
     }
     return h;
+}
+
+static HANDLE open_parent(void) {
+    DWORD self = GetCurrentProcessId(), parent = 0;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return NULL;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (pe.th32ProcessID == self) { parent = pe.th32ParentProcessID; break; }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return parent ? OpenProcess(SYNCHRONIZE, FALSE, parent) : NULL;
 }
 
 int wmain(int argc, wchar_t **argv) {
@@ -93,7 +111,19 @@ int wmain(int argc, wchar_t **argv) {
     if (job) AssignProcessToJobObject(job, pi.hProcess);
     ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
-    WaitForSingleObject(pi.hProcess, INFINITE);
+    /* Wait for Python, or for our parent to disappear (then the job object
+       terminates Python when this process exits). --self-test/--verify run
+       from a console are not tied to the parent. */
+    HANDLE parent = NULL;
+    BOOL serving = TRUE;
+    for (int i = 1; i < argc; i++) if (argv[i][0] == L'-') serving = FALSE;
+    if (serving) parent = open_parent();
+    HANDLE waits[2] = { pi.hProcess, parent };
+    DWORD which = WaitForMultipleObjects(parent ? 2 : 1, waits, FALSE, INFINITE);
+    if (which == WAIT_OBJECT_0 + 1) {
+        TerminateProcess(pi.hProcess, 3);
+        return 3;
+    }
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);

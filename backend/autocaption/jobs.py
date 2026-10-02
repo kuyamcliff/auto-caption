@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
+import socket
 import shutil
 import subprocess
 import sys
@@ -77,6 +79,7 @@ class Worker:
         self.lock = threading.Lock()
         self.ready = threading.Event()
         self.last_used = time.time()
+        self.conn: socket.socket | None = None
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -86,17 +89,40 @@ class Worker:
             if self.alive():
                 return
             self.ready.clear()
+            # Commands go to the worker over an authenticated localhost socket,
+            # not its stdin: on Windows a thread blocked reading a synchronous
+            # pipe stalls other I/O in that process (it deadlocked imports).
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            listener.settimeout(300)
+            key = secrets.token_hex(16)
             env = dict(os.environ)
             app_dir = str(Path(__file__).resolve().parent.parent)
             env["PYTHONPATH"] = app_dir
             env["PYTHONIOENCODING"] = "utf-8"
+            env["AUTOCAPTION_WORKER_PORT"] = str(listener.getsockname()[1])
+            env["AUTOCAPTION_WORKER_KEY"] = key
             self.proc = subprocess.Popen(
                 [sys.executable, "-X", "utf8", "-m", "autocaption", "worker"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=app_dir, env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=app_dir, env=env,
                 creationflags=_NO_WINDOW,
             )
             threading.Thread(target=self._drain_stderr, args=(self.proc,), daemon=True).start()
             threading.Thread(target=self._read, args=(self.proc,), daemon=True).start()
+            try:
+                conn, _ = listener.accept()
+                conn.settimeout(30)
+                hello = conn.makefile("r", encoding="utf-8").readline().strip()
+                if not secrets.compare_digest(hello, key):
+                    conn.close()
+                    raise RuntimeError("worker handshake failed")
+                conn.settimeout(None)
+                self.conn = conn
+            except OSError as exc:
+                raise RuntimeError(f"worker did not connect: {exc}") from exc
+            finally:
+                listener.close()
         # First start after install can be slow (antivirus scanning the runtime).
         if not self.ready.wait(300):
             raise RuntimeError("worker did not start")
@@ -135,10 +161,9 @@ class Worker:
 
     def send(self, msg: dict) -> None:
         self.last_used = time.time()
-        if not self.alive() or self.proc.stdin is None:
+        if not self.alive() or self.conn is None:
             raise RuntimeError("worker not running")
-        self.proc.stdin.write((json.dumps(msg) + "\n").encode("utf-8"))
-        self.proc.stdin.flush()
+        self.conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
 
     def kill(self) -> None:
         with self.lock:
@@ -149,6 +174,12 @@ class Worker:
                 except (OSError, subprocess.TimeoutExpired):
                     pass
             self.proc = None
+            if self.conn is not None:
+                try:
+                    self.conn.close()
+                except OSError:
+                    pass
+                self.conn = None
             self.ready.clear()
 
 
