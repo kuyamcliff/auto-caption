@@ -26,7 +26,7 @@ const check = (name, ok, detail = "") => {
   console.log(`[${ok ? "PASS" : "FAIL"}] ${name}${detail ? " -- " + detail : ""}`);
 };
 
-const harness = spawn("node", ["tests/ui/server.mjs", "dist/extension", "4877"], {
+const harness = spawn("node", ["tests/ui/server.mjs", process.env.EXT_DIR || "dist/extension", "4877"], {
   cwd: join(repo, "extension"),
   env: {
     ...process.env,
