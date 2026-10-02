@@ -37,7 +37,8 @@ function Color(props: { label: string; value: string; onChange: (v: string) => v
 
 export function AnimationPicker() {
   const store = getStore();
-  const a = useStore((s) => s.project!.animation);
+  const a = useStore((s) => s.project?.animation);
+  if (!a) return null;
   const set = (patch: Partial<AnimationSettings>, label?: string) => store.setAnimation(patch, label);
   const perWord = ["wordPop", "karaoke", "highlight", "typewriter"].includes(a.preset);
   return (
@@ -46,7 +47,7 @@ export function AnimationPicker() {
         {ANIMATION_PRESETS.map((p) => (
           <button class="anim-tile" key={p.id} aria-pressed={a.preset === p.id} onClick={() => set({ preset: p.id }, `Animation: ${p.label}`)} title={p.perWord ? "Uses the aligned word timing" : undefined}>
             <div class={`demo ${DEMO[p.id]}`} aria-hidden="true">
-              {p.perWord ? <><span>Aa</span>&nbsp;<span>Bb</span>&nbsp;<span>Cc</span></> : <span>Aa Bb</span>}
+              {p.perWord ? <><span>A</span>&nbsp;<span>B</span>&nbsp;<span>C</span></> : <span>Aa Bb</span>}
             </div>
             <div class="nm">{p.label}</div>
           </button>
@@ -71,7 +72,7 @@ export function AnimationPicker() {
 
 export function StylePanel() {
   const store = getStore();
-  const s = useStore((st) => st.project!.style);
+  const s = useStore((st) => st.project?.style);
   const presets = useStore((st) => st.presets);
   const presetId = useStore((st) => st.presetId);
   const fonts = useStore((st) => st.fonts);
@@ -82,6 +83,7 @@ export function StylePanel() {
     if (!fonts.length) return FALLBACK_FONTS.map((f) => ({ ps: f.ps, family: f.family, label: f.label }));
     return fonts.slice(0, 2500).map((f) => ({ ps: f.ps, family: f.family, label: `${f.family} ${f.style}`.trim() }));
   }, [fonts]);
+  if (!s) return null;
   const current = presets.find((p) => p.id === presetId);
   const mine = presets.filter((p) => !p.builtIn);
 

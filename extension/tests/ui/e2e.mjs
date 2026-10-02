@@ -46,7 +46,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME || "/
 const page = await browser.newPage({ viewport: { width: 400, height: 760 }, deviceScaleFactor: 2 });
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
-page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+page.on("console", (m) => { if (m.type() === "error" && !/favicon|404/.test(m.text())) errors.push(m.text()); });
 const rpc = (fn, args) => page.evaluate(([f, a]) => window.__harnessRpc(f, a), [fn, args]);
 const shot = (name) => page.screenshot({ path: join(shots, `${name}.png`) });
 

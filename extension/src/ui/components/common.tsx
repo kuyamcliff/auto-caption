@@ -1,4 +1,5 @@
 import type { ComponentChildren, JSX } from "preact";
+import { createPortal } from "preact/compat";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Icon } from "../icons";
 import type { ErrorAction, FriendlyError } from "../errors";
@@ -43,16 +44,33 @@ export interface MenuItem {
 /** Button with a popover menu. Closes on outside click / Escape; arrow keys move focus. */
 export function MenuButton(props: { button: (open: boolean, toggle: () => void) => JSX.Element; items: MenuItem[]; up?: boolean; right?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const toggle = () => {
+    if (!open && ref.current) {
+      // Fixed positioning so menus are never clipped by scrolling lists.
+      const r = ref.current.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const up = props.up || r.bottom > vh * 0.6;
+      const p: typeof pos = up ? { bottom: vh - r.top + 6 } : { top: r.bottom + 6 };
+      if (props.right) p.right = Math.max(8, vw - r.right);
+      else p.left = Math.max(8, Math.min(r.left, vw - 240));
+      setPos(p);
+    }
+    setOpen(!open);
+  };
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current && !ref.current.contains(t) && !menuRef.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>(".menu-item:not(:disabled)") ?? []);
+        const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>(".menu-item:not(:disabled)") ?? []);
         const i = items.indexOf(document.activeElement as HTMLButtonElement);
         const next = items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
         next?.focus();
@@ -61,7 +79,7 @@ export function MenuButton(props: { button: (open: boolean, toggle: () => void) 
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
-    setTimeout(() => ref.current?.querySelector<HTMLButtonElement>(".menu-item")?.focus(), 0);
+    setTimeout(() => menuRef.current?.querySelector<HTMLButtonElement>(".menu-item:not(:disabled)")?.focus(), 0);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
@@ -69,9 +87,9 @@ export function MenuButton(props: { button: (open: boolean, toggle: () => void) 
   }, [open]);
   return (
     <div class="menu-wrap" ref={ref}>
-      {props.button(open, () => setOpen(!open))}
-      {open ? (
-        <div class={`menu ${props.up ? "up" : "down"}${props.right ? " right" : ""}`} role="menu">
+      {props.button(open, toggle)}
+      {open ? createPortal(
+        <div class="menu" role="menu" ref={menuRef} style={{ position: "fixed", ...pos, maxHeight: `${Math.round(window.innerHeight * 0.7)}px`, overflowY: "auto" }}>
           {props.items.map((it, i) =>
             it.separator ? <div class="menu-sep" key={i} /> : it.heading ? <div class="menu-label" key={i}>{it.label}</div> : (
               <button class="menu-item" role="menuitem" key={i} disabled={it.disabled} onClick={() => { setOpen(false); it.run?.(); }}>
@@ -84,7 +102,7 @@ export function MenuButton(props: { button: (open: boolean, toggle: () => void) 
             ),
           )}
         </div>
-      ) : null}
+      , document.body) : null}
     </div>
   );
 }

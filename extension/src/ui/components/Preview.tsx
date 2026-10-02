@@ -105,10 +105,10 @@ function CaptionRender({ p, v, t }: { p: Project; v: CaptionView; t: number }) {
 
 export function Preview() {
   const store = getStore();
-  const p = useStore((s) => s.project)!;
+  const p = useStore((s) => s.project);
   const t = useStore((s) => s.previewTime);
   const playing = useStore((s) => s.playing);
-  const all = useMemo(() => views(p), [p]);
+  const all = useMemo(() => (p ? views(p) : []), [p]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
 
@@ -145,14 +145,21 @@ export function Preview() {
   }, [playing]);
 
   // keep the selected caption in sync with the playhead
-  const active = all.find((v) => t >= v.start && t < v.end) ?? null;
+  const live = all.find((v) => t >= v.start && t < v.end) ?? null;
+  // While paused between captions, show the selected caption fully animated in.
+  const sel = !playing && !live ? all.find((v) => v.id === store.state.selectedId) ?? null : null;
+  const active = live ?? sel;
+  const renderT = live ? t : sel ? Math.min(sel.end - 0.001, sel.start + 1) : t;
   useEffect(() => {
     if (playing && active && store.state.selectedId !== active.id) store.set({ selectedId: active.id });
   }, [active?.id, playing]);
 
+  if (!p) return null;
   const W = p.source.width || 1920;
   const H = p.source.height || 1080;
-  const k = width / W;
+  // fit inside the panel width and a bounded height (portrait comps stay compact)
+  const maxH = Math.max(160, Math.min(440, window.innerHeight * 0.45));
+  const k = Math.min(width / W, maxH / H);
   const scrub = (e: MouseEvent) => {
     const el = e.currentTarget as HTMLElement;
     const r = el.getBoundingClientRect();
@@ -176,9 +183,9 @@ export function Preview() {
         <span class="faint small" style={{ marginLeft: "auto" }}>{W}×{H}</span>
       </div>
       <div class="stage-wrap" ref={wrapRef}>
-        <div class="stage" style={{ height: `${Math.round(H * k)}px` }} aria-label="Caption animation preview">
+        <div class="stage" style={{ height: `${Math.round(H * k)}px`, width: `${Math.round(W * k)}px`, margin: "0 auto" }} aria-label="Caption animation preview">
           <div class="stage-inner" style={{ width: `${W}px`, height: `${H}px`, transform: `scale(${k})` }}>
-            {active ? <CaptionRender p={p} v={active} t={t} /> : null}
+            {active && p ? <CaptionRender p={p} v={active} t={renderT} /> : null}
           </div>
           <div class="stage-safe" />
           <div class="stage-time">{formatTimecode(t, p.source.compStartTime)}</div>

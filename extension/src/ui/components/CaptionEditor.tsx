@@ -77,7 +77,8 @@ const CaptionRow = memo(function CaptionRow(props: { v: CaptionView; selected: b
   }, [props.editing]);
 
   const commit = () => {
-    if (draft.trim() !== v.text.trim()) store.apply("Edit text", (p) => E.editCaptionText(p, v.id, draft));
+    const text = taRef.current?.value ?? draft;
+    if (text.trim() !== v.text.trim()) store.apply("Edit text", (p) => E.editCaptionText(p, v.id, text));
     store.set({ editingId: null });
   };
   const splitAtCaret = () => {
@@ -86,7 +87,7 @@ const CaptionRow = memo(function CaptionRow(props: { v: CaptionView; selected: b
     if (ta && props.editing) {
       const before = ta.value.slice(0, ta.selectionStart).trim();
       at = before ? E.tokenize(before, props.noSpaces).length : 0;
-      if (draft.trim() !== v.text.trim()) store.apply("Edit text", (p) => E.editCaptionText(p, v.id, draft));
+      if (ta.value.trim() !== v.text.trim()) store.apply("Edit text", (p) => E.editCaptionText(p, v.id, ta.value));
     }
     store.apply("Split caption", (p) => E.splitCaption(p, v.id, at));
     store.set({ editingId: null });
@@ -98,7 +99,7 @@ const CaptionRow = memo(function CaptionRow(props: { v: CaptionView; selected: b
       onClick={() => { store.set({ selectedId: v.id, previewTime: v.start, playing: false }); }}
       onDblClick={() => store.set({ editingId: v.id, selectedId: v.id })}
       onKeyDown={(e) => {
-        if (props.editing) return;
+        if (props.editing || e.target !== e.currentTarget) return;
         if (e.key === "Enter") { store.set({ editingId: v.id }); e.preventDefault(); }
         if (e.key === "Delete" || e.key === "Backspace") { store.apply("Delete caption", (p) => E.deleteCaption(p, v.id)); e.preventDefault(); }
       }}>
@@ -113,13 +114,14 @@ const CaptionRow = memo(function CaptionRow(props: { v: CaptionView; selected: b
           <textarea ref={taRef} class="input" rows={1} value={draft} aria-label={`Caption ${v.index + 1} text`}
             onInput={(e) => { const ta = e.target as HTMLTextAreaElement; setDraft(ta.value); ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; }}
             onKeyDown={(e) => {
+              e.stopPropagation();
               if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); commit(); }
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); splitAtCaret(); }
               if (e.key === "Escape") { e.preventDefault(); store.set({ editingId: null }); }
             }}
             onBlur={(e) => { const rt = (e as FocusEvent).relatedTarget as HTMLElement | null; if (!rt?.closest?.(".cap-edit")) commit(); }} />
           <div class="row" style={{ marginTop: 6, gap: 6 }}>
-            <span class="faint small grow">Enter to save · Ctrl+Enter splits at the cursor · Esc cancels</span>
+            <span class="faint small grow" title="Enter saves · Ctrl+Enter splits at the cursor · Esc cancels">Enter saves · Esc cancels</span>
             <button class="btn" onMouseDown={(e) => e.preventDefault()} onClick={splitAtCaret} disabled={v.words.length < 2}>{Icon.split({ size: 14 })} Split here</button>
             <button class="btn btn-primary" onMouseDown={(e) => e.preventDefault()} onClick={commit}>Save</button>
           </div>
@@ -227,8 +229,8 @@ export function CaptionEditor() {
       <div class="card-head">
         <span class="card-title">Captions</span>
         <span class="badge">{all.length}</span>
-        {p.transcription.aligned ? <span class="badge ok" title="Word timing from forced alignment">Word-aligned</span>
-          : <span class="badge warn" title="Forced alignment was not available; word timing is estimated">Estimated timing</span>}
+        {p.transcription.aligned ? <span class="badge ok hide-narrow" title="Word timing from forced alignment">Word-aligned</span>
+          : <span class="badge warn hide-narrow" title="Forced alignment was not available; word timing is estimated">Estimated timing</span>}
         <span class="grow" />
         <button class="btn btn-ghost icon-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!canUndo} onClick={() => store.undo()}>{Icon.undo()}</button>
         <button class="btn btn-ghost icon-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!canRedo} onClick={() => store.redo()}>{Icon.redo()}</button>
