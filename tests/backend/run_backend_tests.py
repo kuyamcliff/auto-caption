@@ -13,7 +13,6 @@ Writes a JSON report (--report) with every measured number.
 from __future__ import annotations
 
 import argparse
-import difflib
 import http.client
 import json
 import os
@@ -110,19 +109,40 @@ def norm(w: str) -> str:
     return "".join(ch for ch in w.lower() if ch.isalnum() or ch in "$'")
 
 
+MATCH_WINDOW = 1.5  # seconds
+
+
 def timing_errors(expected: list[dict], got: list[dict]) -> dict:
-    a = [norm(w["text"]) for w in expected]
-    b = [norm(w["text"]) for w in got]
-    sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+    """Pair each expected word with the nearest unused output word that has the
+    same text and starts within MATCH_WINDOW seconds. (Sequence matching is
+    unreliable on fixtures that repeat the same sentences.)"""
+    import bisect
+
+    by_text: dict[str, list[int]] = {}
+    for i, g in enumerate(got):
+        by_text.setdefault(norm(g["text"]), []).append(i)
+    starts_sorted = {k: [got[i]["start"] for i in v] for k, v in by_text.items()}
+    used: set[int] = set()
     starts, ends = [], []
-    for block in sm.get_matching_blocks():
-        for k in range(block.size):
-            e, g = expected[block.a + k], got[block.b + k]
-            starts.append(abs(g["start"] - e["start"]))
-            ends.append(abs(g["end"] - e["end"]))
+    for e in expected:
+        k = norm(e["text"])
+        idxs = by_text.get(k)
+        if not idxs:
+            continue
+        pos = bisect.bisect_left(starts_sorted[k], e["start"])
+        best, best_d = None, MATCH_WINDOW
+        for j in range(max(0, pos - 3), min(len(idxs), pos + 3)):
+            gi = idxs[j]
+            d = abs(got[gi]["start"] - e["start"])
+            if gi not in used and d <= best_d:
+                best, best_d = gi, d
+        if best is not None:
+            used.add(best)
+            starts.append(best_d)
+            ends.append(abs(got[best]["end"] - e["end"]))
     matched = len(starts)
-    res = {"expectedWords": len(a), "gotWords": len(b), "matchedWords": matched,
-           "wordAccuracy": round(matched / len(a), 3) if a else 1.0}
+    res = {"expectedWords": len(expected), "gotWords": len(got), "matchedWords": matched,
+           "wordAccuracy": round(matched / len(expected), 3) if expected else 1.0}
     if starts:
         s_sorted = sorted(starts)
         res |= {"startMedianMs": round(statistics.median(starts) * 1000, 1),
