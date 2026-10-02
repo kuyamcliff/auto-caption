@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autocaption/result.schema.json",
+  "title": "Transcription result (backend -> panel)",
+  "description": "Times are seconds relative to the start of the transcribed audio.",
+  "type": "object",
+  "required": ["schemaVersion", "language", "aligned", "durationSec", "words", "segments", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "language": { "type": "string" },
+    "languageProbability": { "type": ["number", "null"] },
+    "noSpaces": { "type": "boolean" },
+    "model": { "type": "string" },
+    "device": { "enum": ["cpu", "cuda"] },
+    "aligned": { "type": "boolean" },
+    "alignmentModel": { "type": ["string", "null"] },
+    "durationSec": { "type": "number", "minimum": 0 },
+    "audio": { "type": "object" },
+    "words": { "type": "array", "items": { "$ref": "word.schema.json" } },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["start", "end", "text", "wordIds"],
+        "properties": {
+          "start": { "type": "number" }, "end": { "type": "number" }, "text": { "type": "string" },
+          "wordIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "string" }, "message": { "type": "string" } } }
+    },
+    "timings": { "type": "object", "additionalProperties": { "type": "number" } }
+  }
+}

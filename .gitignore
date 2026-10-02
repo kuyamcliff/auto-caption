@@ -8,3 +8,4 @@ tests/fixtures/audio/long.expected.json
 *.log
 .DS_Store
 extension/dist/
+.build-cache/

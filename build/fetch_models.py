@@ -132,19 +132,23 @@ def fetch_align(models_dir: Path) -> None:
 
 
 def fetch_vad(models_dir: Path) -> None:
-    """The pyannote segmentation weights ship inside the whisperx wheel; copy them
-    out so they are versioned/checksummed like every other model."""
-    import whisperx
+    """The pyannote segmentation weights ship inside the pinned whisperx wheel;
+    extract them so they are versioned/checksummed like every other model."""
+    import subprocess
+    import tempfile
 
-    src = Path(whisperx.__file__).parent / "assets" / "pytorch_model.bin"
+    print("VAD (from whisperx 3.8.6 wheel)")
     out = models_dir / "vad"
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, out / "pytorch_model.bin")
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run([sys.executable, "-m", "pip", "download", "-q", "--no-deps", "whisperx==3.8.6", "-d", tmp], check=True)
+        whl = next(Path(tmp).glob("whisperx-*.whl"))
+        with zipfile.ZipFile(whl) as z:
+            (out / "pytorch_model.bin").write_bytes(z.read("whisperx/assets/pytorch_model.bin"))
     write_info(out, {
         "kind": "vad", "id": "pyannote-segmentation", "label": "Voice activity detection",
-        "format": "pyannote", "source": "whisperx package assets (pyannote/segmentation)",
-        "revision": f"whisperx-{whisperx.__version__ if hasattr(whisperx, '__version__') else '3.8.6'}",
-        "license": "MIT (pyannote.audio segmentation model)",
+        "format": "pyannote", "source": "whisperx 3.8.6 package assets (pyannote/segmentation)",
+        "revision": "whisperx-3.8.6", "license": "MIT (pyannote.audio segmentation model)",
         "files": {"pytorch_model.bin": {"sha256": sha256_of(out / "pytorch_model.bin"),
                                          "size": (out / "pytorch_model.bin").stat().st_size}},
     })
