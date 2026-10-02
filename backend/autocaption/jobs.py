@@ -254,11 +254,13 @@ class JobManager:
         with job.cond:
             if job.done:
                 return
+            # Remove temp audio *before* announcing the final state, so a
+            # finished job never leaves files behind for the client to see.
+            cleanup_job_files(job.input_path)
             job.result = result
             job.error = error
             msg = {"completed": "Done", "cancelled": "Cancelled", "failed": (error or {}).get("message", "Failed")}[state]
             job.update(state=state, stage=state, message=msg, progress=1.0 if state == "completed" else job.progress)
-        cleanup_job_files(job.input_path)
         self.worker.last_used = time.time()
         log.info("job %s %s", job.id, state)
 
