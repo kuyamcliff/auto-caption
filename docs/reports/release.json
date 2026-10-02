@@ -1,0 +1,28 @@
+{
+ "version": "1.0.0",
+ "extensionSize": "0.2 MB",
+ "backendSize": "5.78 GB",
+ "modelSizes": {
+  "align/de": "377.7 MB",
+  "align/en": "377.7 MB",
+  "align/es": "377.7 MB",
+  "align/fr": "377.7 MB",
+  "align/it": "377.7 MB",
+  "vad": "17.7 MB",
+  "whisper/base": "147.9 MB",
+  "whisper/small": "486.2 MB"
+ },
+ "cudaRuntimeSize": "1.92 GB",
+ "completeZip": {
+  "path": "/tmp/claude-0/release/AutoCaptionAE_COMPLETE_v1.0.0.zip",
+  "size": "5.23 GB",
+  "bytes": 5228794586,
+  "sha256": "a6a87a818696697ad3a3f60a6b15a8c3d6542d12e5123441ff1e8c7aaa4b9191",
+  "entries": 28319
+ },
+ "backendZip": null,
+ "extensionZip": {
+  "size": "0.1 MB",
+  "sha256": "dfe959ae8d79a4de0b23bcd129555224e3c76d8754d312635320de490f5143a9"
+ }
+}

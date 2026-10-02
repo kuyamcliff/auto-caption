@@ -1,0 +1,14 @@
+{"check": "backend", "label": "Backend", "status": "pass", "detail": "AutoCaption backend 1.0.0 (win-x64)", "required": true, "seconds": 0.03}
+{"check": "runtime", "label": "Runtime", "status": "pass", "detail": "Python 3.11.9, torch 2.8.0+cpu, CTranslate2 4.8.2", "required": true, "seconds": 41.27}
+{"check": "files", "label": "Backend files", "status": "pass", "detail": "15719 files verified (SHA-256)", "required": true, "seconds": 69.92}
+{"check": "permissions", "label": "Permissions", "status": "pass", "detail": "Temporary and log folders are writable", "required": true, "seconds": 0.02}
+{"check": "ffmpeg", "label": "FFmpeg", "status": "pass", "detail": "FFmpeg 9.0.2-essentials_build-www.gyan.dev; decoded 4.9s test clip", "required": true, "seconds": 0.89}
+{"check": "vad", "label": "VAD", "status": "pass", "detail": "Voice activity detection loaded", "required": true, "seconds": 5.36}
+{"check": "whisper-base", "label": "Whisper Base", "status": "pass", "detail": "8/9 words recognised, 9 aligned, language en, 8.86s on CPU", "required": true, "seconds": 9.17}
+{"check": "whisper-small", "label": "Whisper Small", "status": "pass", "detail": "9/9 words recognised, 9 aligned, language en, 8.97s on CPU", "required": true, "seconds": 8.97}
+{"check": "align-en", "label": "English Alignment", "status": "pass", "detail": "9 words aligned; 'quick' at 0.78s", "required": true, "seconds": 0.0}
+{"check": "align-other", "label": "Other languages", "status": "pass", "detail": "de, en, es, fr, it loaded", "required": false, "seconds": 6.4}
+{"check": "gpu", "label": "GPU", "status": "info", "detail": "No compatible NVIDIA GPU found. The CPU will be used.", "required": false, "seconds": 0.01}
+{"check": "cpu", "label": "CPU fallback", "status": "pass", "detail": "CPU transcription works", "required": true, "seconds": 0.0}
+{"summary": {"ok": true, "failed": [], "version": "1.0.0", "checks": 12}}
+exit 0
