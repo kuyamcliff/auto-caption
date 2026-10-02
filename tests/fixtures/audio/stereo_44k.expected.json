@@ -1,0 +1,99 @@
+{
+ "name": "stereo_44k",
+ "sampleRate": 44100,
+ "channels": 2,
+ "durationSec": 9.755,
+ "note": "stereo 44.1 kHz",
+ "words": [
+  {
+   "text": "this",
+   "start": 0.5,
+   "end": 0.883
+  },
+  {
+   "text": "is",
+   "start": 0.963,
+   "end": 1.303
+  },
+  {
+   "text": "a",
+   "start": 1.383,
+   "end": 1.686
+  },
+  {
+   "text": "simple",
+   "start": 1.766,
+   "end": 2.262
+  },
+  {
+   "text": "test",
+   "start": 2.342,
+   "end": 2.728
+  },
+  {
+   "text": "of",
+   "start": 2.808,
+   "end": 3.137
+  },
+  {
+   "text": "the",
+   "start": 3.217,
+   "end": 3.502
+  },
+  {
+   "text": "automatic",
+   "start": 3.582,
+   "end": 4.233
+  },
+  {
+   "text": "caption",
+   "start": 4.313,
+   "end": 4.898
+  },
+  {
+   "text": "engine",
+   "start": 4.978,
+   "end": 5.454
+  },
+  {
+   "text": "and",
+   "start": 5.534,
+   "end": 5.925
+  },
+  {
+   "text": "it",
+   "start": 6.005,
+   "end": 6.271
+  },
+  {
+   "text": "should",
+   "start": 6.351,
+   "end": 6.719
+  },
+  {
+   "text": "line",
+   "start": 6.799,
+   "end": 7.245
+  },
+  {
+   "text": "up",
+   "start": 7.325,
+   "end": 7.642
+  },
+  {
+   "text": "with",
+   "start": 7.722,
+   "end": 8.145
+  },
+  {
+   "text": "every",
+   "start": 8.225,
+   "end": 8.662
+  },
+  {
+   "text": "word",
+   "start": 8.742,
+   "end": 9.175
+  }
+ ]
+}

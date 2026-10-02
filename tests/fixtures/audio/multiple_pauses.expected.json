@@ -1,0 +1,69 @@
+{
+ "name": "multiple_pauses",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 10.388,
+ "note": "pauses of 1.5 s and 2 s (Test K)",
+ "words": [
+  {
+   "text": "first",
+   "start": 0.5,
+   "end": 0.948
+  },
+  {
+   "text": "part",
+   "start": 1.048,
+   "end": 1.443
+  },
+  {
+   "text": "here",
+   "start": 1.543,
+   "end": 1.959
+  },
+  {
+   "text": "then",
+   "start": 3.459,
+   "end": 3.889
+  },
+  {
+   "text": "a",
+   "start": 3.989,
+   "end": 4.292
+  },
+  {
+   "text": "pause",
+   "start": 4.392,
+   "end": 4.82
+  },
+  {
+   "text": "and",
+   "start": 4.92,
+   "end": 5.311
+  },
+  {
+   "text": "another",
+   "start": 7.311,
+   "end": 7.794
+  },
+  {
+   "text": "pause",
+   "start": 7.894,
+   "end": 8.322
+  },
+  {
+   "text": "before",
+   "start": 8.422,
+   "end": 8.922
+  },
+  {
+   "text": "the",
+   "start": 9.022,
+   "end": 9.308
+  },
+  {
+   "text": "end",
+   "start": 9.408,
+   "end": 9.788
+  }
+ ]
+}

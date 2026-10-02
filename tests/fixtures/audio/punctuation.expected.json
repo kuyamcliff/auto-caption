@@ -1,0 +1,54 @@
+{
+ "name": "punctuation",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 5.661,
+ "note": "apostrophes, hyphens, punctuation",
+ "words": [
+  {
+   "text": "wait,",
+   "start": 0.5,
+   "end": 0.894
+  },
+  {
+   "text": "don't",
+   "start": 1.014,
+   "end": 1.43
+  },
+  {
+   "text": "go!",
+   "start": 1.55,
+   "end": 1.89
+  },
+  {
+   "text": "it's",
+   "start": 2.01,
+   "end": 2.386
+  },
+  {
+   "text": "a",
+   "start": 2.506,
+   "end": 2.809
+  },
+  {
+   "text": "well-known",
+   "start": 2.929,
+   "end": 3.601
+  },
+  {
+   "text": "trick,",
+   "start": 3.721,
+   "end": 4.096
+  },
+  {
+   "text": "isn't",
+   "start": 4.216,
+   "end": 4.654
+  },
+  {
+   "text": "it?",
+   "start": 4.774,
+   "end": 5.041
+  }
+ ]
+}

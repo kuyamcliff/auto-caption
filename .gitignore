@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+node_modules/
+/dist/
+/out/
+tests/fixtures/audio/long.wav
+tests/fixtures/audio/long.expected.json
+*.log
+.DS_Store

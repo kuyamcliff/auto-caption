@@ -1,0 +1,8 @@
+{
+ "name": "silence",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 5.0,
+ "note": "pure digital silence",
+ "words": []
+}

@@ -1,0 +1,59 @@
+{
+ "name": "slow_english",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 13.338,
+ "note": "very slow speech",
+ "words": [
+  {
+   "text": "please",
+   "start": 0.5,
+   "end": 1.375
+  },
+  {
+   "text": "speak",
+   "start": 1.825,
+   "end": 2.475
+  },
+  {
+   "text": "slowly",
+   "start": 2.925,
+   "end": 3.805
+  },
+  {
+   "text": "so",
+   "start": 4.255,
+   "end": 5.02
+  },
+  {
+   "text": "that",
+   "start": 5.47,
+   "end": 6.164
+  },
+  {
+   "text": "every",
+   "start": 6.614,
+   "end": 7.404
+  },
+  {
+   "text": "single",
+   "start": 7.854,
+   "end": 8.713
+  },
+  {
+   "text": "word",
+   "start": 9.163,
+   "end": 9.933
+  },
+  {
+   "text": "is",
+   "start": 10.383,
+   "end": 11.013
+  },
+  {
+   "text": "clear",
+   "start": 11.463,
+   "end": 12.388
+  }
+ ]
+}
