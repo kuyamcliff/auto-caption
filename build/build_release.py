@@ -203,7 +203,17 @@ def main() -> int:
     (pkg / "extension" / "LICENSE.txt").write_text((REPO / "LICENSE").read_text())
 
     log("copy backend")
-    shutil.copytree(backend_src, pkg / "backend", copy_function=os.link if _same_fs(backend_src, out) else shutil.copy2)
+    # Hard links save disk on the build machine, but NLTK refuses multiply-linked
+    # data files (CWE-59 hardening), so NLTK data is always copied.
+    link_ok = _same_fs(backend_src, out)
+
+    def copy_fn(src: str, dst: str) -> None:
+        if link_ok and "nltk" not in Path(src).parts:
+            os.link(src, dst)
+        else:
+            shutil.copy2(src, dst)
+
+    shutil.copytree(backend_src, pkg / "backend", copy_function=copy_fn)
     for f in (HERE / "dist-files").iterdir():
         if f.is_dir():
             shutil.copytree(f, pkg / f.name)

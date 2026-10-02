@@ -238,6 +238,12 @@ class Engine:
         words = validate_words(words, duration)
         out_segments = _segments_from_words(segments, words)
         warnings += _quality_warnings(words, aligned)
+        failed = getattr(self, "align_failures", 0)
+        if aligned and segments and failed == len(segments):
+            log.error("forced alignment failed for every segment (%d)", failed)
+            warnings.insert(0, {"code": "ALIGNMENT_FAILED",
+                                "message": "Word alignment failed, so word timing is estimated. "
+                                           "Run Verify Backend; the backend folder may be damaged."})
         timings["totalSec"] = round(time.monotonic() - t0, 2)
         return {
             "schemaVersion": SCHEMA_VERSION,
@@ -333,6 +339,7 @@ class Engine:
         words: list[dict] = []
         n = len(segments)
         no_spaces = language in NO_SPACE_LANGUAGES
+        self.align_failures = 0
         for i, seg in enumerate(segments):
             check()
             seg_words = None
@@ -352,6 +359,7 @@ class Engine:
                 if raw:
                     seg_words = [_word(w.get("word", ""), w) for w in raw]
             if not seg_words:
+                self.align_failures += 1
                 seg_words = _unaligned_segment_words(seg, tokens if not no_spaces else list(seg["text"]))
             seg["wordCount"] = len(seg_words)
             words.extend(seg_words)

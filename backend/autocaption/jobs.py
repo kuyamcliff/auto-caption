@@ -90,19 +90,34 @@ class Worker:
             app_dir = str(Path(__file__).resolve().parent.parent)
             env["PYTHONPATH"] = app_dir
             env["PYTHONIOENCODING"] = "utf-8"
-            stderr_path = paths.logs_dir() / "worker-stderr.log"
-            if stderr_path.exists() and stderr_path.stat().st_size > 2_000_000:
-                stderr_path.unlink()
-            err = open(stderr_path, "ab")
             self.proc = subprocess.Popen(
                 [sys.executable, "-X", "utf8", "-m", "autocaption", "worker"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, cwd=app_dir, env=env,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=app_dir, env=env,
                 creationflags=_NO_WINDOW,
             )
-            err.close()
+            threading.Thread(target=self._drain_stderr, args=(self.proc,), daemon=True).start()
             threading.Thread(target=self._read, args=(self.proc,), daemon=True).start()
-        if not self.ready.wait(120):
+        # First start after install can be slow (antivirus scanning the runtime).
+        if not self.ready.wait(300):
             raise RuntimeError("worker did not start")
+
+    @staticmethod
+    def _drain_stderr(proc: subprocess.Popen) -> None:
+        """Library warnings from the worker go to a size-capped log file."""
+        path = paths.logs_dir() / "worker-stderr.log"
+        try:
+            if path.exists() and path.stat().st_size > 2_000_000:
+                path.unlink()
+        except OSError:
+            pass
+        assert proc.stderr is not None
+        for raw in proc.stderr:
+            try:
+                with open(path, "ab") as f:
+                    if f.tell() < 4_000_000:
+                        f.write(raw)
+            except OSError:
+                pass
 
     def _read(self, proc: subprocess.Popen) -> None:
         assert proc.stdout is not None
