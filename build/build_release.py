@@ -116,7 +116,9 @@ def network_audit(report: Path) -> bool:
     runtime_files = list((REPO / "backend" / "autocaption").glob("*.py")) + \
         [p for p in (REPO / "extension" / "src").rglob("*") if p.suffix in (".ts", ".tsx")] + \
         [REPO / "extension" / "host" / "host.jsx"]
-    allowed = re.compile(r"127\.0\.0\.1|json-schema\.org|HF_HUB|TRANSFORMERS_OFFLINE|DO_NOT_TRACK|PYANNOTE_METRICS|"
+    # Reviewed, non-network matches: urllib.parse only parses request paths;
+    # the paths.py docstring describes disabling downloads/telemetry.
+    allowed = re.compile(r"urllib\.parse|download/telemetry path|127\.0\.0\.1|json-schema\.org|HF_HUB|TRANSFORMERS_OFFLINE|DO_NOT_TRACK|PYANNOTE_METRICS|"
                          r"no telemetry|telemetry or analytics|No telemetry|has no telemetry|localhost", re.I)
     hits, unexpected = [], []
     for f in runtime_files:
@@ -152,7 +154,7 @@ def placeholder_scan(report: Path) -> bool:
     hits = []
     for f in files:
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if PLACEHOLDERS.search(line) and "PLACEHOLDERS" not in line:
+            if PLACEHOLDERS.search(line) and "PLACEHOLDERS" not in line and "PLACEHOLDER SCAN" not in line:
                 hits.append(f"{f.relative_to(REPO).as_posix()}:{n}: {line.strip()[:140]}")
     report.write_text("PLACEHOLDER SCAN (TODO FIXME IMPLEMENT PLACEHOLDER MOCK STUB COMING SOON NOT IMPLEMENTED)\n" +
                       ("\n".join(hits) if hits else "No matches in shipped source.") + "\n", encoding="utf-8")
@@ -184,6 +186,8 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--versions", help="build-versions.json from build_backend.py")
     ap.add_argument("--skip-tests", action="store_true")
+    ap.add_argument("--backend-zip", action="store_true",
+                    help="also write a separate backend.zip (duplicates ~5 GB; the COMPLETE zip already contains backend/)")
     args = ap.parse_args()
     backend_src = Path(args.backend).resolve()
     out = Path(args.out).resolve()
@@ -242,20 +246,22 @@ def main() -> int:
 
     log("archives")
     zip_dir(pkg / "extension", pkg / "extension.zip", "extension")
-    zip_dir(pkg / "backend", out / "backend.zip", "backend")
+    if args.backend_zip:
+        zip_dir(pkg / "backend", out / "backend.zip", "backend")
     sums = {}
     for p in sorted(pkg.rglob("*")):
         if p.is_file() and p.name != "checksums.txt" and not p.relative_to(pkg).as_posix().startswith("backend/"):
             sums[p.relative_to(pkg).as_posix()] = sha256(p)
     sums["backend/manifest.json"] = sha256(pkg / "backend" / "manifest.json")
-    sums["backend.zip (separate download)"] = sha256(out / "backend.zip")
+    if args.backend_zip:
+        sums["backend.zip (separate download)"] = sha256(out / "backend.zip")
     (pkg / "checksums.txt").write_text(
         "SHA-256 checksums. Every file inside backend/ is listed with its SHA-256 in backend/manifest.json.\n\n" +
         "\n".join(f"{h}  {n}" for n, h in sums.items()) + "\n", encoding="utf-8")
     complete = out / f"AutoCaptionAE_COMPLETE_v{VERSION}.zip"
     zip_dir(pkg, complete, "AutoCaptionAE")
     log("verifying archives (CRC of every member)")
-    counts = {p.name: verify_zip(p) for p in (pkg / "extension.zip", out / "backend.zip", complete)}
+    counts = {p.name: verify_zip(p) for p in (pkg / "extension.zip", out / "backend.zip", complete) if p.exists()}
     final = {
         "version": VERSION,
         "extensionSize": gb(dir_size(pkg / "extension")),
@@ -264,7 +270,7 @@ def main() -> int:
                        for i in sorted((pkg / "backend" / "models").glob("**/model_info.json"))},
         "cudaRuntimeSize": gb(dir_size(pkg / "backend" / "runtime" / "cuda")) if (pkg / "backend" / "runtime" / "cuda").exists() else None,
         "completeZip": {"path": str(complete), "size": gb(complete.stat().st_size), "bytes": complete.stat().st_size, "sha256": sha256(complete), "entries": counts[complete.name]},
-        "backendZip": {"size": gb((out / "backend.zip").stat().st_size), "sha256": sums["backend.zip (separate download)"]},
+        "backendZip": {"size": gb((out / "backend.zip").stat().st_size), "sha256": sums["backend.zip (separate download)"]} if args.backend_zip else None,
         "extensionZip": {"size": gb((pkg / "extension.zip").stat().st_size), "sha256": sums["extension.zip"]},
     }
     (reports / "release.json").write_text(json.dumps(final, indent=1))
