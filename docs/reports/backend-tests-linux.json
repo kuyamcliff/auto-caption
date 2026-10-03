@@ -1,0 +1,773 @@
+{
+ "started": "2026-10-02 23:02:41",
+ "cmd": "python -m autocaption",
+ "checks": [
+  {
+   "name": "backend starts and prints ready line",
+   "ok": true,
+   "detail": "port 40665, 0.2s"
+  },
+  {
+   "name": "rejects missing token",
+   "ok": true,
+   "detail": "401"
+  },
+  {
+   "name": "rejects wrong token",
+   "ok": true,
+   "detail": "401"
+  },
+  {
+   "name": "rejects foreign Host header (DNS rebinding)",
+   "ok": true,
+   "detail": "403"
+  },
+  {
+   "name": "health",
+   "ok": true,
+   "detail": "{\"version\": \"1.0.0\", \"apiVersion\": 1}"
+  },
+  {
+   "name": "models lists base and small",
+   "ok": true,
+   "detail": "base,small"
+  },
+  {
+   "name": "alignment registry includes en",
+   "ok": true,
+   "detail": "de,en,es,fr,it"
+  },
+  {
+   "name": "manifest endpoint",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "verify (sizes + model SHA-256)",
+   "ok": true,
+   "detail": "101 files"
+  },
+  {
+   "name": "compatibility 1.0.0 accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "compatibility 2.0.0 rejected",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "rejects relative path",
+   "ok": true,
+   "detail": "BAD_PATH"
+  },
+  {
+   "name": "rejects traversal / non-media path",
+   "ok": true,
+   "detail": "BAD_PATH"
+  },
+  {
+   "name": "rejects device path",
+   "ok": true,
+   "detail": "BAD_PATH"
+  },
+  {
+   "name": "rejects unexpected fields",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "rejects malformed job id",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "cancel validates job id",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "background_noise: timing (stress)",
+   "ok": true,
+   "detail": "words 13/18, start median 58.0 ms, p95 522.0 ms, max 522.0 ms, 76.9% within 150 ms, 14.9s"
+  },
+  {
+   "name": "background_noise: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "clean_english: timing",
+   "ok": true,
+   "detail": "words 17/18, start median 11.0 ms, p95 14.0 ms, max 14.0 ms, 100.0% within 150 ms, 1.8s"
+  },
+  {
+   "name": "clean_english: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "fast_english: timing",
+   "ok": true,
+   "detail": "words 16/18, start median 12.0 ms, p95 153.0 ms, max 153.0 ms, 93.8% within 150 ms, 1.7s"
+  },
+  {
+   "name": "fast_english: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "leading_silence: timing",
+   "ok": true,
+   "detail": "words 6/6, start median 9.5 ms, p95 14.0 ms, max 14.0 ms, 100.0% within 150 ms, 1.1s"
+  },
+  {
+   "name": "leading_silence: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "multiple_pauses: timing",
+   "ok": true,
+   "detail": "words 10/12, start median 12.0 ms, p95 78.0 ms, max 78.0 ms, 100.0% within 150 ms, 2.1s"
+  },
+  {
+   "name": "multiple_pauses: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "music_speech: timing",
+   "ok": true,
+   "detail": "words 17/18, start median 13.0 ms, p95 148.0 ms, max 148.0 ms, 100.0% within 150 ms, 1.8s"
+  },
+  {
+   "name": "music_speech: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "numbers: timing",
+   "ok": true,
+   "detail": "words 8/10, start median 10.0 ms, p95 13.0 ms, max 13.0 ms, 100.0% within 150 ms, 1.8s"
+  },
+  {
+   "name": "numbers: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "punctuation: timing",
+   "ok": true,
+   "detail": "words 9/9, start median 10.0 ms, p95 14.0 ms, max 14.0 ms, 100.0% within 150 ms, 1.8s"
+  },
+  {
+   "name": "punctuation: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "quiet_speech: timing",
+   "ok": true,
+   "detail": "words 17/18, start median 10.0 ms, p95 13.0 ms, max 13.0 ms, 100.0% within 150 ms, 2.2s"
+  },
+  {
+   "name": "quiet_speech: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "short: timing",
+   "ok": true,
+   "detail": "words 2/2, start median 11.5 ms, p95 13.0 ms, max 13.0 ms, 100.0% within 150 ms, 1.0s"
+  },
+  {
+   "name": "short: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "silence: completes without inventing words",
+   "ok": true,
+   "detail": "state=failed words=0 err=SILENT_AUDIO"
+  },
+  {
+   "name": "silence: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "slow_english: timing",
+   "ok": true,
+   "detail": "words 10/10, start median 11.5 ms, p95 57.0 ms, max 57.0 ms, 100.0% within 150 ms, 2.1s"
+  },
+  {
+   "name": "slow_english: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "stereo_44k: timing",
+   "ok": true,
+   "detail": "words 17/18, start median 11.0 ms, p95 14.0 ms, max 14.0 ms, 100.0% within 150 ms, 1.9s"
+  },
+  {
+   "name": "stereo_44k: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "stereo_48k: timing",
+   "ok": true,
+   "detail": "words 17/18, start median 11.0 ms, p95 14.0 ms, max 14.0 ms, 100.0% within 150 ms, 2.0s"
+  },
+  {
+   "name": "stereo_48k: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "trailing_silence: timing",
+   "ok": true,
+   "detail": "words 5/6, start median 11.0 ms, p95 14.0 ms, max 14.0 ms, 100.0% within 150 ms, 1.2s"
+  },
+  {
+   "name": "trailing_silence: temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "numbers: '$25'/'1999'/'42' timing covers spoken duration",
+   "ok": true,
+   "detail": "median 10.0 ms"
+  },
+  {
+   "name": "align endpoint (known text)",
+   "ok": true,
+   "detail": "median 9.5 ms"
+  },
+  {
+   "name": "second concurrent job is refused (409)",
+   "ok": true,
+   "detail": "409"
+  },
+  {
+   "name": "cancellation stops the job",
+   "ok": true,
+   "detail": "4.10s"
+  },
+  {
+   "name": "cancelled job's temp input removed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "engine works after cancellation",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "diagnostics endpoint",
+   "ok": true,
+   "detail": "cpu=Intel(R) Xeon(R) Processor @ 2.80GHz, ram=15.7GB, ffmpeg=6.1.1-3ubuntu5"
+  },
+  {
+   "name": "diagnostics contain no session token",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "fixtures": {
+  "background_noise": {
+   "state": "completed",
+   "wallSec": 14.89,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 10.81,
+    "transcribeSec": 1.29,
+    "alignSec": 0.75,
+    "totalSec": 14.46
+   },
+   "expectedWords": 18,
+   "gotWords": 17,
+   "matchedWords": 13,
+   "wordAccuracy": 0.722,
+   "startMedianMs": 58.0,
+   "startMeanMs": 125.6,
+   "startP95Ms": 522.0,
+   "startMaxMs": 522.0,
+   "endMedianMs": 71.0,
+   "withinTolPct": 76.9,
+   "timingSources": {
+    "aligned": 17
+   }
+  },
+  "clean_english": {
+   "state": "completed",
+   "wallSec": 1.84,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.16,
+    "alignSec": 0.6,
+    "totalSec": 1.77
+   },
+   "expectedWords": 18,
+   "gotWords": 18,
+   "matchedWords": 17,
+   "wordAccuracy": 0.944,
+   "startMedianMs": 11.0,
+   "startMeanMs": 9.9,
+   "startP95Ms": 14.0,
+   "startMaxMs": 14.0,
+   "endMedianMs": 35.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 18
+   }
+  },
+  "fast_english": {
+   "state": "completed",
+   "wallSec": 1.66,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.12,
+    "alignSec": 0.47,
+    "totalSec": 1.59
+   },
+   "expectedWords": 18,
+   "gotWords": 17,
+   "matchedWords": 16,
+   "wordAccuracy": 0.889,
+   "startMedianMs": 12.0,
+   "startMeanMs": 29.1,
+   "startP95Ms": 153.0,
+   "startMaxMs": 153.0,
+   "endMedianMs": 6.5,
+   "withinTolPct": 93.8,
+   "timingSources": {
+    "aligned": 17
+   }
+  },
+  "leading_silence": {
+   "state": "completed",
+   "wallSec": 1.14,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 0.82,
+    "alignSec": 0.25,
+    "totalSec": 1.07
+   },
+   "expectedWords": 6,
+   "gotWords": 6,
+   "matchedWords": 6,
+   "wordAccuracy": 1.0,
+   "startMedianMs": 9.5,
+   "startMeanMs": 9.5,
+   "startP95Ms": 14.0,
+   "startMaxMs": 14.0,
+   "endMedianMs": 10.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 6
+   }
+  },
+  "multiple_pauses": {
+   "state": "completed",
+   "wallSec": 2.11,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.29,
+    "alignSec": 0.74,
+    "totalSec": 2.04
+   },
+   "expectedWords": 12,
+   "gotWords": 14,
+   "matchedWords": 10,
+   "wordAccuracy": 0.833,
+   "startMedianMs": 12.0,
+   "startMeanMs": 17.9,
+   "startP95Ms": 78.0,
+   "startMaxMs": 78.0,
+   "endMedianMs": 11.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 14
+   }
+  },
+  "music_speech": {
+   "state": "completed",
+   "wallSec": 1.84,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.18,
+    "alignSec": 0.58,
+    "totalSec": 1.77
+   },
+   "expectedWords": 18,
+   "gotWords": 17,
+   "matchedWords": 17,
+   "wordAccuracy": 0.944,
+   "startMedianMs": 13.0,
+   "startMeanMs": 29.9,
+   "startP95Ms": 148.0,
+   "startMaxMs": 148.0,
+   "endMedianMs": 34.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 17
+   }
+  },
+  "numbers": {
+   "state": "completed",
+   "wallSec": 1.76,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.06,
+    "alignSec": 0.6,
+    "totalSec": 1.66
+   },
+   "expectedWords": 10,
+   "gotWords": 11,
+   "matchedWords": 8,
+   "wordAccuracy": 0.8,
+   "startMedianMs": 10.0,
+   "startMeanMs": 9.6,
+   "startP95Ms": 13.0,
+   "startMaxMs": 13.0,
+   "endMedianMs": 48.5,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 11
+   }
+  },
+  "punctuation": {
+   "state": "completed",
+   "wallSec": 1.8,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.29,
+    "alignSec": 0.43,
+    "totalSec": 1.73
+   },
+   "expectedWords": 9,
+   "gotWords": 9,
+   "matchedWords": 9,
+   "wordAccuracy": 1.0,
+   "startMedianMs": 10.0,
+   "startMeanMs": 8.9,
+   "startP95Ms": 14.0,
+   "startMaxMs": 14.0,
+   "endMedianMs": 43.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 9
+   }
+  },
+  "quiet_speech": {
+   "state": "completed",
+   "wallSec": 2.17,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.42,
+    "alignSec": 0.68,
+    "totalSec": 2.1
+   },
+   "expectedWords": 18,
+   "gotWords": 17,
+   "matchedWords": 17,
+   "wordAccuracy": 0.944,
+   "startMedianMs": 10.0,
+   "startMeanMs": 9.3,
+   "startP95Ms": 13.0,
+   "startMaxMs": 13.0,
+   "endMedianMs": 34.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 17
+   }
+  },
+  "short": {
+   "state": "completed",
+   "wallSec": 0.98,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 0.65,
+    "alignSec": 0.26,
+    "totalSec": 0.91
+   },
+   "expectedWords": 2,
+   "gotWords": 2,
+   "matchedWords": 2,
+   "wordAccuracy": 1.0,
+   "startMedianMs": 11.5,
+   "startMeanMs": 11.5,
+   "startP95Ms": 13.0,
+   "startMaxMs": 13.0,
+   "endMedianMs": 26.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 2
+   }
+  },
+  "silence": {
+   "state": "failed",
+   "wallSec": 0.07,
+   "stages": [
+    "queued",
+    "preparing",
+    "failed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": null,
+   "words": 0,
+   "timingSources": {}
+  },
+  "slow_english": {
+   "state": "completed",
+   "wallSec": 2.13,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.15,
+    "alignSec": 0.84,
+    "totalSec": 2.03
+   },
+   "expectedWords": 10,
+   "gotWords": 10,
+   "matchedWords": 10,
+   "wordAccuracy": 1.0,
+   "startMedianMs": 11.5,
+   "startMeanMs": 17.8,
+   "startP95Ms": 57.0,
+   "startMaxMs": 57.0,
+   "endMedianMs": 37.5,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 10
+   }
+  },
+  "stereo_44k": {
+   "state": "completed",
+   "wallSec": 1.94,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.21,
+    "alignSec": 0.59,
+    "totalSec": 1.81
+   },
+   "expectedWords": 18,
+   "gotWords": 17,
+   "matchedWords": 17,
+   "wordAccuracy": 0.944,
+   "startMedianMs": 11.0,
+   "startMeanMs": 9.9,
+   "startP95Ms": 14.0,
+   "startMaxMs": 14.0,
+   "endMedianMs": 34.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 17
+   }
+  },
+  "stereo_48k": {
+   "state": "completed",
+   "wallSec": 2.03,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 1.31,
+    "alignSec": 0.58,
+    "totalSec": 1.89
+   },
+   "expectedWords": 18,
+   "gotWords": 17,
+   "matchedWords": 17,
+   "wordAccuracy": 0.944,
+   "startMedianMs": 11.0,
+   "startMeanMs": 9.9,
+   "startP95Ms": 14.0,
+   "startMaxMs": 14.0,
+   "endMedianMs": 30.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 17
+   }
+  },
+  "trailing_silence": {
+   "state": "completed",
+   "wallSec": 1.18,
+   "stages": [
+    "queued",
+    "preparing",
+    "transcribing",
+    "aligning",
+    "building",
+    "completed"
+   ],
+   "tempCleaned": true,
+   "warnings": [],
+   "timings": {
+    "loadSec": 0.0,
+    "transcribeSec": 0.82,
+    "alignSec": 0.27,
+    "totalSec": 1.1
+   },
+   "expectedWords": 6,
+   "gotWords": 5,
+   "matchedWords": 5,
+   "wordAccuracy": 0.833,
+   "startMedianMs": 11.0,
+   "startMeanMs": 11.2,
+   "startP95Ms": 14.0,
+   "startMaxMs": 14.0,
+   "endMedianMs": 40.0,
+   "withinTolPct": 100.0,
+   "timingSources": {
+    "aligned": 5
+   }
+  },
+  "align_known_text": {
+   "expectedWords": 18,
+   "gotWords": 18,
+   "matchedWords": 18,
+   "wordAccuracy": 1.0,
+   "startMedianMs": 9.5,
+   "startMeanMs": 9.2,
+   "startP95Ms": 13.0,
+   "startMaxMs": 13.0,
+   "endMedianMs": 25.5,
+   "withinTolPct": 100.0
+  }
+ },
+ "failures": 0,
+ "finished": "2026-10-02 23:03:33"
+}

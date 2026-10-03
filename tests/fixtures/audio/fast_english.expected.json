@@ -1,0 +1,99 @@
+{
+ "name": "fast_english",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 5.797,
+ "note": "fast speech, 20 ms gaps",
+ "words": [
+  {
+   "text": "this",
+   "start": 0.5,
+   "end": 0.738
+  },
+  {
+   "text": "is",
+   "start": 0.758,
+   "end": 0.943
+  },
+  {
+   "text": "a",
+   "start": 0.963,
+   "end": 1.095
+  },
+  {
+   "text": "simple",
+   "start": 1.115,
+   "end": 1.458
+  },
+  {
+   "text": "test",
+   "start": 1.478,
+   "end": 1.714
+  },
+  {
+   "text": "of",
+   "start": 1.734,
+   "end": 1.915
+  },
+  {
+   "text": "the",
+   "start": 1.935,
+   "end": 2.073
+  },
+  {
+   "text": "automatic",
+   "start": 2.093,
+   "end": 2.499
+  },
+  {
+   "text": "caption",
+   "start": 2.519,
+   "end": 2.901
+  },
+  {
+   "text": "engine",
+   "start": 2.921,
+   "end": 3.224
+  },
+  {
+   "text": "and",
+   "start": 3.244,
+   "end": 3.488
+  },
+  {
+   "text": "it",
+   "start": 3.508,
+   "end": 3.672
+  },
+  {
+   "text": "should",
+   "start": 3.692,
+   "end": 3.935
+  },
+  {
+   "text": "line",
+   "start": 3.955,
+   "end": 4.229
+  },
+  {
+   "text": "up",
+   "start": 4.249,
+   "end": 4.433
+  },
+  {
+   "text": "with",
+   "start": 4.453,
+   "end": 4.693
+  },
+  {
+   "text": "every",
+   "start": 4.713,
+   "end": 4.99
+  },
+  {
+   "text": "word",
+   "start": 5.01,
+   "end": 5.277
+  }
+ ]
+}

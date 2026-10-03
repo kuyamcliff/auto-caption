@@ -1,0 +1,27 @@
+NETWORK AUDIT
+=============
+
+Runtime code (backend/autocaption, extension/src, extension/host):
+  backend/autocaption/paths.py:82: """Hard-disable every download/telemetry path of the ML libraries and point
+  backend/autocaption/paths.py:88: os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+  backend/autocaption/server.py:19: from urllib.parse import urlsplit
+  extension/src/ui/screens/Settings.tsx:183: <div class="privacy">{Icon.shield()}<span>Your audio stays on this computer. AutoCaption AE does not upload your media, and has no telemetry
+  extension/src/host/client.ts:33: return `http://127.0.0.1:${this.port}${path}`;
+  extension/src/host/client.ts:41: res = await fetch(this.url(path), {
+  extension/src/host/client.ts:110: const res = await fetch(this.url(`/job/${jobId}/events`), { headers: { "X-AutoCaption-Token": this.token }, signal });
+
+Unexpected runtime network references: none
+
+Build-time downloads (build/, not shipped):
+  build/build_backend.py:36: PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embed-amd64.zip"
+  build/build_backend.py:37: FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip"
+  build/build_backend.py:39: TORCH_INDEX = "https://download.pytorch.org/whl/cpu"
+  build/build_release.py:80: "FFmpeg 9.0.2 (gyan.dev essentials build) -- GPL v3. Source: https://ffmpeg.org/download.html ;",
+  build/fetch_models.py:39: TORCHAUDIO_BASE = "https://download.pytorch.org/torchaudio/models/"
+  build/fetch_models.py:53: NLTK_PUNKT_URL = "https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip"
+  build/fetch_models.py:111: url = f"https://huggingface.co/{spec['repo']}/resolve/{spec['revision']}/{name}"
+  build/fetch_models.py:116: "source": f"https://huggingface.co/{spec['repo']}", "revision": spec["revision"],
+
+Runtime environment hard-disables library downloads/telemetry: HF_HUB_OFFLINE=1, TRANSFORMERS_OFFLINE=1,
+HF_HUB_DISABLE_TELEMETRY=1, PYANNOTE_METRICS_ENABLED=0, DO_NOT_TRACK=1 (backend/autocaption/paths.py).
+The only socket the backend opens is its 127.0.0.1 API; the panel only connects to that address (CSP connect-src).

@@ -1,0 +1,39 @@
+{
+ "name": "leading_silence",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 6.769,
+ "note": "3 s of silence before speech (Test I)",
+ "words": [
+  {
+   "text": "we",
+   "start": 3.0,
+   "end": 3.352
+  },
+  {
+   "text": "start",
+   "start": 3.452,
+   "end": 3.929
+  },
+  {
+   "text": "after",
+   "start": 4.029,
+   "end": 4.494
+  },
+  {
+   "text": "a",
+   "start": 4.594,
+   "end": 4.897
+  },
+  {
+   "text": "long",
+   "start": 4.997,
+   "end": 5.505
+  },
+  {
+   "text": "silence",
+   "start": 5.605,
+   "end": 6.169
+  }
+ ]
+}

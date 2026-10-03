@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autocaption/project.schema.json",
+  "title": "AutoCaption AE project (exported JSON)",
+  "description": "Times are seconds in composition time (0 = composition start; add source.compStartTime for the displayed timecode). sourceWords is the untouched engine output; words holds user edits; captions group word ids and never own word timing.",
+  "type": "object",
+  "required": ["schemaVersion", "project", "source", "transcription", "sourceWords", "words", "captions", "segment", "style", "animation"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "app": { "type": "object", "properties": { "name": { "type": "string" }, "version": { "type": "string" } } },
+    "project": {
+      "type": "object", "required": ["id", "name"],
+      "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
+    },
+    "source": {
+      "type": "object",
+      "required": ["composition", "fps", "compStartTime", "audioOffset", "mapping"],
+      "properties": {
+        "composition": { "type": "string" }, "compId": { "type": "integer" },
+        "layers": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "index": { "type": "integer" }, "type": { "enum": ["audio", "video", "precomp", "unknown"] } } } },
+        "layerType": { "enum": ["audio", "video", "precomp", "unknown"] },
+        "fps": { "type": "number", "exclusiveMinimum": 0 }, "frameDuration": { "type": "number" },
+        "compStartTime": { "type": "number" }, "compDuration": { "type": "number" },
+        "width": { "type": "integer" }, "height": { "type": "integer" },
+        "audioOffset": { "type": "number", "description": "composition time of t=0 in the transcribed audio" },
+        "audioDuration": { "type": "number" },
+        "mapping": { "enum": ["render", "source", "import"] }
+      }
+    },
+    "transcription": {
+      "type": "object", "required": ["language", "model", "aligned"],
+      "properties": { "language": { "type": "string" }, "model": { "type": "string" }, "aligned": { "type": "boolean" }, "alignmentModel": { "type": ["string", "null"] }, "warnings": { "type": "array" } }
+    },
+    "sourceWords": { "type": "array", "items": { "$ref": "word.schema.json" } },
+    "words": { "type": "array", "items": { "$ref": "word.schema.json" } },
+    "captions": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "wordIds"],
+        "properties": {
+          "id": { "type": "string" }, "wordIds": { "type": "array", "items": { "type": "string" } },
+          "locked": { "type": "boolean" }, "start": { "type": "number" }, "end": { "type": "number" }
+        }
+      }
+    },
+    "segment": { "type": "object", "properties": { "maxWords": { "type": "integer", "minimum": 1 }, "maxCharsPerLine": { "type": "integer" }, "maxLines": { "enum": [1, 2] } } },
+    "style": { "type": "object" },
+    "animation": { "type": "object", "properties": { "preset": { "enum": ["none", "fade", "pop", "slideUp", "slideDown", "bounce", "wordPop", "karaoke", "typewriter", "highlight"] } } }
+  }
+}

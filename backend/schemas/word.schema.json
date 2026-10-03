@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autocaption/word.schema.json",
+  "title": "Word",
+  "type": "object",
+  "required": ["id", "text", "start", "end", "timingSource"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "text": { "type": "string" },
+    "start": { "type": "number", "minimum": 0, "description": "seconds" },
+    "end": { "type": "number", "minimum": 0, "description": "seconds, >= start" },
+    "timingSource": {
+      "enum": ["aligned", "inferred", "fallback", "manual"],
+      "description": "aligned: forced alignment; inferred: interpolated from aligned neighbours; fallback: Whisper word timestamps (no aligner for this language); manual: set by the user"
+    },
+    "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "alignment confidence" },
+    "edited": { "type": "boolean", "description": "text corrected by the user; timing still from the original word" }
+  }
+}

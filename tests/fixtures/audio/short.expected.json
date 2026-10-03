@@ -1,0 +1,19 @@
+{
+ "name": "short",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 1.74,
+ "note": "very short clip",
+ "words": [
+  {
+   "text": "hello",
+   "start": 0.3,
+   "end": 0.773
+  },
+  {
+   "text": "world",
+   "start": 0.873,
+   "end": 1.339
+  }
+ ]
+}

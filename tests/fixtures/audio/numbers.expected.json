@@ -1,0 +1,59 @@
+{
+ "name": "numbers",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 8.314,
+ "note": "numbers and currency (Test N)",
+ "words": [
+  {
+   "text": "it",
+   "start": 0.5,
+   "end": 0.766
+  },
+  {
+   "text": "costs",
+   "start": 0.866,
+   "end": 1.378
+  },
+  {
+   "text": "$25",
+   "start": 1.478,
+   "end": 2.739
+  },
+  {
+   "text": "and",
+   "start": 2.839,
+   "end": 3.23
+  },
+  {
+   "text": "arrived",
+   "start": 3.33,
+   "end": 3.885
+  },
+  {
+   "text": "in",
+   "start": 3.985,
+   "end": 4.3
+  },
+  {
+   "text": "1999",
+   "start": 4.4,
+   "end": 5.723
+  },
+  {
+   "text": "with",
+   "start": 5.823,
+   "end": 6.247
+  },
+  {
+   "text": "42",
+   "start": 6.347,
+   "end": 7.063
+  },
+  {
+   "text": "items",
+   "start": 7.163,
+   "end": 7.714
+  }
+ ]
+}

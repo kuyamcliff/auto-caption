@@ -1,0 +1,39 @@
+{
+ "name": "trailing_silence",
+ "sampleRate": 16000,
+ "channels": 1,
+ "durationSec": 7.751,
+ "note": "4 s of silence after speech (Test J)",
+ "words": [
+  {
+   "text": "and",
+   "start": 0.5,
+   "end": 0.891
+  },
+  {
+   "text": "then",
+   "start": 0.991,
+   "end": 1.421
+  },
+  {
+   "text": "the",
+   "start": 1.521,
+   "end": 1.806
+  },
+  {
+   "text": "speaker",
+   "start": 1.906,
+   "end": 2.381
+  },
+  {
+   "text": "stops",
+   "start": 2.481,
+   "end": 3.04
+  },
+  {
+   "text": "talking",
+   "start": 3.14,
+   "end": 3.651
+  }
+ ]
+}
