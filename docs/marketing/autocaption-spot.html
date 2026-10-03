@@ -1,0 +1,708 @@
+<title>AutoCaption AE Spot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a 1080x1920 (9:16) stage scaled to fit, transport bar beneath. Single dark look: the After Effects workspace. */
+:root {
+  --ink: #101114;          /* stage ground, blue-biased graphite */
+  --panel: #1c1d21;        /* AE panel */
+  --panel-2: #26272c;
+  --rule: #34353b;
+  --paper: #f3f1ec;        /* type */
+  --dim: #8d8f97;
+  --cti: #3b8eea;          /* AE playhead / brand blue */
+  --sung: #ffd43b;         /* karaoke highlight */
+  --page: #0b0c0e;
+  --display: "Archivo", "Arial Black", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "SF Mono", monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--page); color: var(--paper); font: 14px/1.4 var(--display); padding-inline: 16px; margin: 0; overflow-x: hidden; }
+.shell { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding-block: 16px; }
+.frame { position: relative; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px #24262c, 0 30px 80px rgba(0,0,0,.55); background: var(--ink); max-width: 100%; }
+#stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 0 0; background: var(--ink); overflow: hidden; font-family: var(--display); }
+.transport { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 560px; color: var(--dim); font: 12px var(--mono); }
+.transport button { all: unset; cursor: pointer; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--cti); color: #fff; flex: none; }
+.transport button.ghost { background: transparent; border: 1px solid var(--rule); color: var(--paper); }
+.transport button:focus-visible, .chips button:focus-visible { outline: 2px solid var(--sung); outline-offset: 2px; }
+.transport input { flex: 1; min-width: 0; accent-color: var(--cti); }
+.tc { color: var(--paper); font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 560px; }
+.chips button { all: unset; cursor: pointer; font: 600 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; padding: 5px 9px; border-radius: 4px; border: 1px solid var(--rule); color: var(--dim); }
+.chips button[aria-current="true"] { color: var(--ink); background: var(--paper); border-color: var(--paper); }
+.meta { font: 11px var(--mono); color: #5d6068; letter-spacing: .05em; }
+body.render { padding: 0; }
+body.render .transport, body.render .chips, body.render .meta { display: none; }
+body.render .shell { padding: 0; display: block; }
+body.render .frame { border-radius: 0; box-shadow: none; }
+
+/* ------------------------------------------------------------ stage parts */
+.L { position: absolute; left: 0; top: 0; will-change: transform, opacity; }
+.scene { position: absolute; inset: 0; display: none; }
+.disp { font-weight: 900; font-variation-settings: "wdth" 118; letter-spacing: -0.02em; line-height: .92; text-transform: uppercase; }
+.cap { font-weight: 900; font-variation-settings: "wdth" 112; text-transform: uppercase; color: var(--paper);
+  -webkit-text-stroke: 16px #08090b; paint-order: stroke fill; letter-spacing: -0.01em; }
+.mono { font-family: var(--mono); }
+.kicker { font: 600 26px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.mark { width: 300px; height: 300px; border-radius: 72px; background: var(--cti); position: relative; box-shadow: 0 30px 90px rgba(59,142,234,.35); }
+.mark i { position: absolute; left: 78px; height: 26px; border-radius: 13px; background: #fff; transform-origin: 0 50%; }
+.row { position: absolute; left: 0; height: 74px; width: 1080px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
+.chip { width: 22px; height: 22px; border-radius: 4px; margin: 0 22px 0 34px; flex: none; }
+.lname { font: 26px var(--mono); color: var(--paper); width: 270px; }
+.lane { position: relative; flex: 1; height: 100%; }
+.bar { position: absolute; top: 17px; height: 40px; border-radius: 4px; }
+.kf { position: absolute; top: 28px; width: 18px; height: 18px; background: #d9dadf; transform: rotate(45deg); }
+.panel { background: var(--panel); border: 2px solid var(--rule); border-radius: 30px; overflow: hidden; }
+.step { display: flex; align-items: center; gap: 22px; font-size: 34px; font-weight: 500; color: #6d7079; height: 62px; }
+.step .ic { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #4a4c53; flex: none; display: grid; place-items: center; }
+.capr { display: grid; grid-template-columns: 170px 1fr; align-items: center; height: 76px; font-size: 34px; border-radius: 14px; padding: 0 22px; }
+.word-box { position: absolute; height: 92px; border: 3px solid var(--rule); border-radius: 12px; display: flex; flex-direction: column; justify-content: center; padding-left: 16px; }
+.feat { position: absolute; inset: 0; display: none; }
+.lines { position: absolute; display: flex; flex-direction: column; }
+.ln { display: flex; flex-wrap: nowrap; gap: 0 34px; align-items: flex-end; }
+.wd { display: inline-block; transform-origin: 50% 85%; }
+.fchip { position: absolute; font: 800 74px var(--display); font-variation-settings: "wdth" 110; padding: 26px 40px; border-radius: 22px; border: 3px solid var(--rule); background: var(--panel-2); }
+#grain { position: absolute; inset: 0; width: 1080px; height: 1920px; pointer-events: none; opacity: .07; mix-blend-mode: screen; image-rendering: pixelated; }
+.vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 80% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%); }
+#wipe { position: absolute; top: 0; height: 1920px; width: 6px; background: var(--cti); box-shadow: 0 0 40px rgba(59,142,234,.9); visibility: hidden; }
+#wipe::before { content: ""; position: absolute; left: -17px; top: 0; width: 40px; height: 34px; background: var(--cti); clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); }
+#brand { position: absolute; left: 64px; top: 72px; display: flex; align-items: center; gap: 20px; visibility: hidden; }
+#brand .mini { width: 64px; height: 64px; border-radius: 16px; background: var(--cti); position: relative; }
+#brand .mini i { position: absolute; left: 17px; height: 6px; border-radius: 3px; background: #fff; }
+#brand span { font: 800 34px var(--display); font-variation-settings: "wdth" 100; letter-spacing: -.01em; }
+@media (prefers-reduced-motion: reduce) { .transport button { transition: none; } }
+</style>
+
+<div class="shell">
+  <div class="frame" id="frame">
+    <div id="stage" aria-label="AutoCaption AE advertisement animation" role="img">
+
+      <!-- S1 hook: the ad's own captions, timed word by word -->
+      <div class="scene" id="s1">
+        <canvas class="L" id="wave1" width="1080" height="420" style="top:1190px"></canvas>
+        <div id="hookWords"></div>
+      </div>
+
+      <!-- S2 problem: hand-built caption layers in an AE timeline -->
+      <div class="scene" id="s2">
+        <div class="lines disp" style="left:64px;top:210px;font-size:106px;gap:16px;white-space:nowrap">
+          <div id="p1">Every word.</div>
+          <div id="p2" style="color:var(--dim)">Every keyframe.</div>
+          <div id="p3" style="color:var(--sung)">By hand.</div>
+        </div>
+        <div class="L" id="tl" style="top:900px;width:1080px">
+          <div class="mono" style="height:70px;display:flex;align-items:center;gap:28px;padding-left:34px;background:var(--panel);border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);font-size:24px;color:var(--dim)">
+            <span style="color:var(--paper)">Main Comp</span><span id="tlTc" style="color:var(--cti)">0:00:03:12</span>
+          </div>
+          <div id="tlRows" style="position:relative;height:740px;background:var(--panel)"></div>
+          <div class="L" id="tlCti" style="top:70px;width:4px;height:740px;background:var(--cti)"></div>
+          <svg class="L" id="cursor" width="54" height="70" viewBox="0 0 18 24"><path d="M1 1v19l5-5 3.5 7 3-1.4L9 13.6h7z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>
+        </div>
+      </div>
+
+      <!-- S3 reveal -->
+      <div class="scene" id="s3">
+        <div class="L mark" id="mark" style="left:390px;top:560px"><i id="m1" style="top:94px;width:118px"></i><i id="m2" style="top:137px;width:150px"></i><i id="m3" style="top:180px;width:96px"></i></div>
+        <div class="L disp" id="wordmark" style="top:930px;width:1080px;text-align:center;font-size:108px;letter-spacing:-.03em;text-transform:none;font-variation-settings:'wdth' 96">AutoCaption AE</div>
+        <div class="L" id="sub1" style="top:1110px;width:1080px;text-align:center;font-size:46px;font-weight:500;color:var(--paper)">Word‑accurate captions for After Effects.</div>
+        <div class="L kicker" id="sub2" style="top:1200px;width:1080px;text-align:center">Runs fully offline</div>
+      </div>
+
+      <!-- S4 demo: the panel -->
+      <div class="scene" id="s4">
+        <div class="L disp" id="d1" style="left:64px;top:220px;font-size:116px">Select a layer.</div>
+        <div class="L disp" id="d2" style="left:64px;top:220px;font-size:116px">Click<br>Transcribe.</div>
+        <div class="L disp" id="d3" style="left:64px;top:220px;font-size:116px;color:var(--sung)">Captions,<br>timed.</div>
+        <div class="L panel" id="pnl" style="left:90px;top:600px;width:900px">
+          <div style="height:96px;display:flex;align-items:center;gap:18px;padding:0 36px;border-bottom:2px solid var(--rule)">
+            <span style="width:40px;height:40px;border-radius:10px;background:var(--cti);display:inline-block"></span>
+            <b style="font-size:34px;font-weight:800">AutoCaption</b>
+            <span style="margin-left:auto;font-size:26px;color:var(--dim);border:2px solid var(--rule);border-radius:30px;padding:6px 18px">● Ready</span>
+          </div>
+          <div style="padding:34px 36px;display:flex;flex-direction:column;gap:26px">
+            <div class="kicker" style="font-size:22px">Source</div>
+            <div id="src" style="display:flex;align-items:center;gap:24px;background:#141518;border:2px solid var(--rule);border-radius:18px;padding:22px 24px">
+              <div style="width:76px;height:76px;border-radius:16px;background:rgba(59,142,234,.15);display:grid;place-items:center">
+                <svg width="44" height="44" viewBox="0 0 16 16" fill="none" stroke="#3b8eea" stroke-width="1.6" stroke-linecap="round"><path d="M2 8h1M4.5 5.5v5M7 3v10M9.5 5v6M12 6.5v3"/></svg>
+              </div>
+              <div><div style="font-size:36px;font-weight:700">Voiceover.wav</div><div style="font-size:26px;color:var(--dim)">Main Comp · Audio · 42.6 s</div></div>
+            </div>
+            <div id="ctrls" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:28px">
+              <div style="border:2px solid var(--rule);border-radius:14px;padding:16px 20px"><span style="color:var(--dim)">Model</span>&nbsp; Base</div>
+              <div style="border:2px solid var(--rule);border-radius:14px;padding:16px 20px"><span style="color:var(--dim)">Language</span>&nbsp; Auto</div>
+            </div>
+            <div id="btn" style="height:104px;border-radius:20px;background:var(--cti);display:grid;place-items:center;font-size:40px;font-weight:800;transform-origin:50% 50%">Transcribe</div>
+            <div id="steps" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div id="bar" style="height:0;border-radius:5px;background:#2e3036;overflow:hidden"><div id="barFill" style="height:100%;width:0;background:var(--cti)"></div></div>
+            <div id="caps" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+        <svg class="L" id="cursor2" width="54" height="70" viewBox="0 0 18 24"><path d="M1 1v19l5-5 3.5 7 3-1.4L9 13.6h7z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>
+      </div>
+
+      <!-- S5 precision: playhead crossing word boundaries -->
+      <div class="scene" id="s5">
+        <div class="L disp" id="q1" style="left:64px;top:230px;font-size:112px">Timed to<br>the word,<br><span style="color:var(--dim)">not the sentence.</span></div>
+        <div id="beatWords"></div>
+        <canvas class="L" id="wave2" width="1080" height="300" style="top:1180px"></canvas>
+        <div id="boxes"></div>
+        <div class="L" id="ph" style="top:1150px;width:5px;height:520px;background:var(--cti);box-shadow:0 0 30px rgba(59,142,234,.8)"></div>
+        <div class="L kicker" id="q2" style="top:1730px;width:1080px;text-align:center;font-size:24px">Forced alignment · word‑level timestamps</div>
+      </div>
+
+      <!-- S6 features -->
+      <div class="scene" id="s6">
+        <div class="feat" id="f1">
+          <div class="L kicker" style="left:64px;top:300px">Animation</div>
+          <div class="L disp" style="left:64px;top:360px;font-size:130px">10 presets.</div>
+          <div class="L cap" id="popWord" style="top:880px;width:1080px;text-align:center;font-size:250px">POP</div>
+          <div class="L mono" id="presetList" style="top:1320px;width:1080px;text-align:center;font-size:34px;color:var(--dim)"></div>
+        </div>
+        <div class="feat" id="f2">
+          <div class="L kicker" style="left:64px;top:300px">One click</div>
+          <div class="L disp" style="left:64px;top:360px;font-size:118px">Real text<br>layers.</div>
+          <div class="L" id="f2rows" style="top:820px;width:1080px"></div>
+        </div>
+        <div class="feat" id="f3">
+          <div class="L kicker" style="left:64px;top:300px">Export</div>
+          <div class="L disp" style="left:64px;top:360px;font-size:118px">Every<br>format.</div>
+          <div id="f3chips"></div>
+        </div>
+        <div class="feat" id="f4">
+          <div class="L kicker" style="left:64px;top:300px">Private</div>
+          <div class="L disp" style="left:64px;top:360px;font-size:112px">Your audio<br>never leaves<br><span style="color:var(--sung)">your PC.</span></div>
+          <svg class="L" id="offline" width="420" height="420" viewBox="0 0 24 24" style="left:330px;top:1040px" fill="none" stroke="#f3f1ec" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2.5l8 3.2v6.1c0 4.8-3.3 8-8 9.7-4.7-1.7-8-4.9-8-9.7V5.7z"/><path id="tick" d="M8.2 12.2l2.6 2.6 5-5.4" stroke="#3b8eea" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- S7 end card -->
+      <div class="scene" id="s7">
+        <div class="L mark" id="mark2" style="left:390px;top:520px"><i style="top:94px;width:118px"></i><i style="top:137px;width:150px"></i><i style="top:180px;width:96px"></i></div>
+        <div class="L disp" id="wm2" style="top:860px;width:1080px;text-align:center;font-size:108px;letter-spacing:-.03em;text-transform:none;font-variation-settings:'wdth' 96">AutoCaption AE</div>
+        <div id="endWords"></div>
+        <div class="L mono" id="e2" style="top:1600px;width:1080px;text-align:center;font-size:30px;color:var(--paper)">For After Effects 2022+ on Windows</div>
+        <div class="L mono" id="e3" style="top:1652px;width:1080px;text-align:center;font-size:26px;color:var(--dim)">Whisper Base &amp; Small included · No cloud · No account</div>
+      </div>
+
+      <div id="brand"><div class="mini"><i style="top:18px;width:24px"></i><i style="top:29px;width:31px"></i><i style="top:40px;width:20px"></i></div><span>AutoCaption AE</span></div>
+      <div id="wipe"></div>
+      <div class="vignette"></div>
+      <canvas id="grain" width="270" height="480"></canvas>
+    </div>
+  </div>
+  <div class="transport">
+    <button id="play" aria-label="Play">▶</button>
+    <button id="restart" class="ghost" aria-label="Restart">↺</button>
+    <input id="scrub" type="range" min="0" max="24" step="0.0333333" value="0" aria-label="Position">
+    <span class="tc" id="tc">0:00:00:00</span>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="meta">1080 × 1920 · 30 fps · 24 s · silent cut</div>
+</div>
+
+<script>
+(() => {
+  const FPS = 30, DUR = 24;
+  const $ = (id) => document.getElementById(id);
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const p = (t, a, b) => clamp((t - a) / (b - a));
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const E = {
+    out: (k) => 1 - Math.pow(1 - k, 3),
+    expo: (k) => (k >= 1 ? 1 : 1 - Math.pow(2, -10 * k)),
+    back: (k) => { const c1 = 1.70158, c3 = c1 + 1; return k <= 0 ? 0 : 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); },
+    inout: (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2),
+    in: (k) => k * k * k,
+  };
+  function set(el, x = 0, y = 0, s = 1, o = 1, r = 0) {
+    const fit = el.dataset.fit ? parseFloat(el.dataset.fit) : 1; // measured fit-to-width factor
+    el.style.transform = `translate(${x}px,${y}px) scale(${s * fit}) rotate(${r}deg)`;
+    el.style.opacity = o;
+  }
+  const tc = (t) => {
+    const f = Math.round(t * FPS), s = Math.floor(f / FPS);
+    return `0:00:${String(s).padStart(2, "0")}:${String(f % FPS).padStart(2, "0")}`;
+  };
+  const LABEL = ["#b53838", "#e4d84c", "#a9cbc7", "#e5bcc9", "#a9a9ca", "#e7c19e", "#b3c7b3", "#677de0", "#4aa44c", "#8e2c9a", "#e8920d"];
+  // deterministic noise
+  function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+
+  /** Lay words out as real lines (no overlaps); returns the word nodes in order. */
+  function flow(container, lines, render) {
+    const nodes = [];
+    lines.forEach((line) => {
+      const ln = document.createElement("div");
+      ln.className = "ln";
+      line.forEach((item) => {
+        const w = document.createElement("div");
+        w.className = "wd";
+        w.innerHTML = render(item);
+        ln.appendChild(w);
+        nodes.push(w);
+      });
+      container.appendChild(ln);
+    });
+    return nodes;
+  }
+
+  // ---------------------------------------------------------------- build S1
+  const HOOK = [
+    { w: "You", t: 0.35, line: 0 }, { w: "still", t: 0.62, line: 0 }, { w: "type", t: 0.9, line: 0 },
+    { w: "captions", t: 1.2, line: 1 }, { w: "by", t: 1.75, line: 2 }, { w: "hand?", t: 1.98, line: 2 },
+  ];
+  const hookEl = $("hookWords");
+  hookEl.className = "lines";
+  hookEl.style.cssText = "left:66px;top:520px;gap:30px";
+  const hookNodes = flow(hookEl, [HOOK.slice(0, 3), HOOK.slice(3, 4), HOOK.slice(4)], (h) =>
+    `<div class="cap" style="font-size:126px;line-height:1">${h.w}</div><div class="mono" style="font-size:26px;color:#7e8aa0;margin-top:8px;padding-left:6px">${h.t.toFixed(2)} s</div>`);
+
+  // ---------------------------------------------------------------- build S2
+  const rowsEl = $("tlRows");
+  const ROWS = 10;
+  const rows = [];
+  for (let i = 0; i < ROWS; i++) {
+    const r = document.createElement("div");
+    r.className = "row";
+    r.style.top = `${i * 74}px`;
+    const start = 40 + ((i * 97) % 420), len = 110 + ((i * 53) % 120);
+    r.innerHTML = `<span class="chip" style="background:${LABEL[i % LABEL.length]}"></span><span class="lname">Caption ${String(i + 1).padStart(3, "0")}</span>
+      <span class="lane"><span class="bar" style="left:${start}px;width:${len}px;background:${LABEL[i % LABEL.length]}55;border:2px solid ${LABEL[i % LABEL.length]}"></span>
+      <span class="kf" style="left:${start - 9}px"></span><span class="kf" style="left:${start + 40}px"></span><span class="kf" style="left:${start + len - 9}px"></span></span>`;
+    rowsEl.appendChild(r);
+    rows.push(r);
+  }
+
+  // ---------------------------------------------------------------- build S4
+  const STEPS = ["Extracting composition audio", "Transcribing", "Aligning words", "Building captions"];
+  const STEP_T = [11.15, 11.6, 12.45, 12.95]; // when each step becomes active
+  const stepsEl = $("steps");
+  const stepNodes = STEPS.map((s) => {
+    const d = document.createElement("div");
+    d.className = "step";
+    d.innerHTML = `<span class="ic"></span><span>${s}</span>`;
+    stepsEl.appendChild(d);
+    return d;
+  });
+  const CAPS = [["0:01.20", "We shot the whole thing"], ["0:02.84", "in one take,"], ["0:03.90", "so every word"], ["0:05.12", "had to land"], ["0:06.30", "right on the beat."]];
+  const capsEl = $("caps");
+  const capNodes = CAPS.map(([t, x]) => {
+    const d = document.createElement("div");
+    d.className = "capr";
+    d.innerHTML = `<span class="mono" style="font-size:28px;color:var(--dim)">${t}</span><span>${x}</span>`;
+    capsEl.appendChild(d);
+    return d;
+  });
+
+  // ---------------------------------------------------------------- build S5
+  const BEAT = [
+    { w: "right", t0: 6.30, t1: 6.55 }, { w: "on", t0: 6.58, t1: 6.69 }, { w: "the", t0: 6.71, t1: 6.84 }, { w: "beat.", t0: 6.88, t1: 7.32 },
+  ];
+  const A_T0 = 6.15, A_T1 = 7.45; // audio window shown on the waveform
+  const X = (s) => 60 + ((s - A_T0) / (A_T1 - A_T0)) * 960;
+  const beatEl = $("beatWords"), boxesEl = $("boxes");
+  beatEl.className = "lines";
+  beatEl.style.cssText = "left:66px;top:720px;gap:6px";
+  const beatWordNodes = flow(beatEl, [BEAT.slice(0, 2), BEAT.slice(2)], (b) => `<div class="cap" style="font-size:168px;line-height:1">${b.w}</div>`);
+  const beatNodes = BEAT.map((b, i) => {
+    const box = document.createElement("div");
+    box.className = "word-box";
+    box.style.left = `${X(b.t0)}px`;
+    box.style.width = `${X(b.t1) - X(b.t0)}px`;
+    box.style.top = `${1500}px`;
+    box.innerHTML = `<span style="font-size:28px;font-weight:800">${b.w.replace(".", "")}</span><span class="mono" style="font-size:20px;color:var(--dim)">${b.t0.toFixed(2)}</span>`;
+    boxesEl.appendChild(box);
+    return { d: beatWordNodes[i], box };
+  });
+
+  // ---------------------------------------------------------------- build S6
+  const PRESETS = ["None", "Fade", "Pop", "Slide Up", "Slide Down", "Bounce", "Word Pop", "Karaoke", "Typewriter", "Highlight"];
+  const f2 = $("f2rows");
+  const f2Rows = [];
+  for (let i = 0; i < 8; i++) {
+    const r = document.createElement("div");
+    r.className = "row";
+    r.style.top = `${i * 74}px`;
+    r.style.background = "var(--panel)";
+    const start = 30 + i * 70, len = 64 + ((i * 37) % 40);
+    r.innerHTML = `<span class="chip" style="background:#677de0"></span><span class="lname">Caption ${String(i + 1).padStart(3, "0")}</span>
+      <span class="lane"><span class="bar" style="left:${start}px;width:${len}px;background:#677de055;border:2px solid #677de0"></span></span>`;
+    f2.appendChild(r);
+    f2Rows.push(r);
+  }
+  const FORMATS = [["SRT", 120, 860], ["VTT", 560, 900], ["ASS", 200, 1120], ["JSON", 580, 1160], ["TXT", 330, 1380]];
+  const f3 = $("f3chips");
+  const fmtNodes = FORMATS.map(([n, x, y]) => {
+    const d = document.createElement("div");
+    d.className = "fchip";
+    d.textContent = n;
+    d.style.left = `${x}px`;
+    d.style.top = `${y}px`;
+    f3.appendChild(d);
+    return d;
+  });
+
+  // ---------------------------------------------------------------- build S7
+  const END = [{ w: "Select.", t: 22.2 }, { w: "Transcribe.", t: 22.55 }, { w: "Create.", t: 22.95 }];
+  const endEl = $("endWords");
+  endEl.className = "lines";
+  endEl.style.cssText = "left:0;top:1090px;width:1080px;align-items:center;gap:4px";
+  const endNodes = flow(endEl, END.map((e) => [e]), (e) => `<div class="cap" style="font-size:100px;line-height:1.08">${e.w}</div>`);
+
+  // ---------------------------------------------------------------- waveform
+  function drawWave(cv, t, bursts, opts) {
+    const g = cv.getContext("2d");
+    const W = cv.width, H = cv.height, mid = H / 2;
+    g.clearRect(0, 0, W, H);
+    const n = opts.bars, bw = W / n;
+    for (let i = 0; i < n; i++) {
+      const x = i * bw;
+      const st = opts.t0 + (i / n) * (opts.t1 - opts.t0); // source time of this bar
+      let a = 0.05 + 0.03 * Math.sin(i * 1.7 + t * 6);
+      for (const b of bursts) {
+        if (st >= b.t0 && st <= b.t1) {
+          const k = (st - b.t0) / (b.t1 - b.t0);
+          a = Math.max(a, (0.35 + 0.55 * Math.abs(Math.sin(i * 0.9 + b.t0 * 7))) * Math.sin(Math.PI * k));
+        }
+      }
+      const h = a * H * 0.92 * (opts.gain ?? 1);
+      const played = opts.head !== undefined && st <= opts.head;
+      g.fillStyle = played ? opts.played : opts.idle;
+      g.fillRect(x + bw * 0.18, mid - h / 2, bw * 0.64, Math.max(3, h));
+    }
+  }
+  const HOOK_BURSTS = HOOK.map((h, i) => ({ t0: h.t, t1: (HOOK[i + 1]?.t ?? h.t + 0.5) - 0.04 }));
+
+  // ---------------------------------------------------------------- grain
+  const grain = $("grain").getContext("2d");
+  const gimg = grain.createImageData(270, 480);
+  function drawGrain(frame) {
+    const r = rng(frame * 7919 + 13);
+    for (let i = 0; i < gimg.data.length; i += 4) {
+      const v = r() * 255;
+      gimg.data[i] = gimg.data[i + 1] = gimg.data[i + 2] = v;
+      gimg.data[i + 3] = 255;
+    }
+    grain.putImageData(gimg, 0, 0);
+  }
+
+  // ---------------------------------------------------------------- scenes
+  const SCENES = [
+    { id: "s1", a: 0, b: 3.4, name: "Hook" },
+    { id: "s2", a: 3.4, b: 6.6, name: "Problem" },
+    { id: "s3", a: 6.6, b: 9.6, name: "Reveal" },
+    { id: "s4", a: 9.6, b: 14.8, name: "Demo" },
+    { id: "s5", a: 14.8, b: 18.8, name: "Timing" },
+    { id: "s6", a: 18.8, b: 21.8, name: "Features" },
+    { id: "s7", a: 21.8, b: 24.01, name: "End card" },
+  ];
+  SCENES.forEach((s) => (s.el = $(s.id)));
+
+  function s1(t) {
+    HOOK.forEach((h, i) => {
+      const k = p(t, h.t, h.t + 0.22);
+      const next = HOOK[i + 1]?.t ?? 2.6;
+      const sung = t >= h.t && t < next + (i === HOOK.length - 1 ? 0.4 : 0);
+      const out = p(t, 2.7 + i * 0.05, 3.05 + i * 0.05);
+      set(hookNodes[i], 0, E.in(out) * 260, lerp(0.45, 1, E.back(k)), (k > 0 ? 1 : 0) * (1 - out));
+      hookNodes[i].firstChild.style.color = sung ? "var(--sung)" : "var(--paper)";
+    });
+    drawWave($("wave1"), t, HOOK_BURSTS, { bars: 90, t0: t - 1.2, t1: t + 0.6, idle: "#3a3c44", played: "#3b8eea", head: t, gain: 1 - p(t, 2.9, 3.3) });
+  }
+
+  function s2(t) {
+    const lt = t - 3.4;
+    [["p1", 3.55], ["p2", 4.15], ["p3", 4.85]].forEach(([id, at]) => {
+      const k = E.expo(p(t, at, at + 0.4));
+      const out = E.in(p(t, 5.75, 6.15));
+      set($(id), lerp(-80, 0, k), -out * 120, 1, k * (1 - out));
+    });
+    rows.forEach((r, i) => {
+      const k = E.out(p(t, 3.45 + i * 0.05, 3.8 + i * 0.05));
+      // collapse into one line before the reveal
+      const c = E.inout(p(t, 5.9, 6.5));
+      const y = lerp(0, 370 - i * 74, c);
+      set(r, lerp(1080, 0, k), y, 1, 1 - c * 0.85);
+    });
+    set($("tl"), 0, 0, 1, 1 - E.in(p(t, 6.35, 6.6)));
+    $("tlTc").textContent = tc(3 + lt * 0.9);
+    set($("tlCti"), 300 + lt * 130, 0, 1, 1 - p(t, 5.9, 6.2));
+    // cursor drags a bar
+    const cx = lerp(900, 520, E.inout(p(t, 3.9, 4.6))) + Math.sin(lt * 5) * 6;
+    const cy = lerp(700, 330, E.inout(p(t, 3.9, 4.6))) + E.inout(p(t, 4.7, 5.4)) * 74;
+    set($("cursor"), cx, cy + 70, 1, p(t, 3.8, 4.0) * (1 - p(t, 5.6, 5.8)));
+  }
+
+  function s3(t) {
+    const k = E.back(p(t, 6.65, 7.15));
+    const exit = E.inout(p(t, 9.15, 9.6));
+    // exit: fly into the corner brand mark (centre 96,104; mark centre 540,710; 64/300 scale)
+    set($("mark"), lerp(0, -444, exit), lerp(0, -606, exit), lerp(0.2, 1, k) * lerp(1, 0.213, exit), p(t, 6.6, 6.75));
+    [["m1", 6.95], ["m2", 7.05], ["m3", 7.15]].forEach(([id, at]) => {
+      $(id).style.transform = `scaleX(${E.expo(p(t, at, at + 0.35))})`;
+    });
+    const wm = E.out(p(t, 7.3, 7.85));
+    $("wordmark").style.clipPath = `inset(0 ${lerp(100, 0, wm)}% 0 0)`;
+    set($("wordmark"), 0, lerp(30, 0, wm) - exit * 120, 1, 1 - exit);
+    set($("sub1"), 0, lerp(30, 0, E.out(p(t, 7.9, 8.3))) - exit * 120, 1, p(t, 7.9, 8.3) * (1 - exit));
+    set($("sub2"), 0, lerp(20, 0, E.out(p(t, 8.35, 8.7))) - exit * 120, 1, p(t, 8.35, 8.7) * (1 - exit));
+  }
+
+  function s4(t) {
+    const enter = E.expo(p(t, 9.6, 10.1));
+    const out = E.in(p(t, 14.45, 14.8));
+    set($("pnl"), 0, lerp(260, 0, enter) + out * -80, 1, enter * (1 - out));
+    const heads = [["d1", 9.75, 10.55], ["d2", 10.55, 12.95], ["d3", 12.95, 14.6]];
+    heads.forEach(([id, a, b]) => {
+      const i = E.expo(p(t, a, a + 0.35));
+      const o = E.in(p(t, b - 0.15, b));
+      set($(id), lerp(-60, 0, i), 0, 1, i * (1 - o));
+    });
+    // cursor to the Transcribe button, click at 10.9
+    const ck = E.inout(p(t, 10.15, 10.85));
+    set($("cursor2"), lerp(1000, 520, ck), lerp(1800, 1040, ck), 1, p(t, 10.1, 10.25) * (1 - p(t, 11.3, 11.5)));
+    const press = p(t, 10.85, 10.95) - p(t, 10.95, 11.1);
+    $("btn").style.transform = `scale(${1 - press * 0.05})`;
+    const working = t >= 10.95;
+    $("btn").style.opacity = working ? lerp(1, 0.0, p(t, 10.95, 11.1)) : 1;
+    $("btn").style.height = working ? `${lerp(104, 0, E.out(p(t, 10.95, 11.15)))}px` : "104px";
+    $("ctrls").style.opacity = 1 - p(t, 10.95, 11.15);
+    $("ctrls").style.height = `${lerp(68, 0, E.out(p(t, 10.95, 11.15)))}px`;
+    stepNodes.forEach((n, i) => {
+      const shown = p(t, 11.0 + i * 0.06, 11.2 + i * 0.06);
+      const active = t >= STEP_T[i];
+      const done = i < 3 ? t >= STEP_T[i + 1] : t >= 13.3;
+      n.style.opacity = shown;
+      n.style.height = `${shown * 62}px`;
+      n.style.color = done ? "#9fa2aa" : active ? "var(--paper)" : "#6d7079";
+      n.style.fontWeight = active && !done ? 700 : 500;
+      const ic = n.firstChild;
+      if (done) {
+        ic.style.borderColor = "#3fb26f";
+        ic.style.background = "#3fb26f";
+        ic.innerHTML = '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#0b0c0e" stroke-width="2.4"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+        ic.style.transform = "none";
+      } else if (active) {
+        ic.style.borderColor = "#3b8eea";
+        ic.style.borderTopColor = "transparent";
+        ic.style.background = "transparent";
+        ic.innerHTML = "";
+        ic.style.transform = `rotate(${t * 720}deg)`;
+      } else {
+        ic.style.borderColor = "#4a4c53";
+        ic.style.background = "transparent";
+        ic.innerHTML = "";
+        ic.style.transform = "none";
+      }
+    });
+    const prog = t < STEP_T[1] ? 0 : t < STEP_T[2] ? lerp(0, 0.62, p(t, STEP_T[1], STEP_T[2])) : t < STEP_T[3] ? lerp(0.62, 0.95, p(t, STEP_T[2], STEP_T[3])) : lerp(0.95, 1, p(t, STEP_T[3], 13.3));
+    $("barFill").style.width = `${prog * 100}%`;
+    const barK = p(t, 11.0, 11.2) * (1 - p(t, 13.35, 13.5));
+    $("bar").style.opacity = barK;
+    $("bar").style.height = `${10 * barK}px`;
+    // steps collapse, captions arrive
+    const swap = E.out(p(t, 13.3, 13.55));
+    stepsEl.style.opacity = 1 - swap;
+    stepsEl.style.height = t > 13.3 ? `${lerp(stepsEl.scrollHeight, 0, swap)}px` : "";
+    capNodes.forEach((n, i) => {
+      const k = E.expo(p(t, 13.45 + i * 0.12, 13.85 + i * 0.12));
+      set(n, lerp(120, 0, k), 0, 1, k);
+      n.style.height = `${76 * k}px`; // rows take space only as they arrive
+      const hl = t >= 13.45 + i * 0.12 && i === capNodes.length - 1;
+      n.style.background = hl ? "rgba(59,142,234,.16)" : "transparent";
+      n.style.boxShadow = hl ? "inset 0 0 0 2px rgba(59,142,234,.45)" : "none";
+    });
+  }
+
+  function s5(t) {
+    const enter = E.expo(p(t, 14.85, 15.3));
+    const out = E.in(p(t, 18.45, 18.8));
+    set($("q1"), lerp(-60, 0, enter), -out * 100, 1, enter * (1 - out));
+    // playhead runs through the audio window between 15.5 and 18.1
+    const head = lerp(A_T0, A_T1, p(t, 15.5, 18.1));
+    drawWave($("wave2"), t, BEAT, { bars: 120, t0: A_T0, t1: A_T1, idle: "#3a3c44", played: "#3b8eea", head: t >= 15.5 ? head : A_T0 - 1 });
+    set($("wave2"), 0, 0, 1, enter * (1 - out));
+    set($("ph"), X(head), 0, 1, p(t, 15.3, 15.5) * (1 - out));
+    BEAT.forEach((b, i) => {
+      const reached = head >= b.t0 && t >= 15.5;
+      const k = E.back(clamp((head - b.t0) / 0.07));
+      const n = beatNodes[i];
+      const sung = reached && (i === BEAT.length - 1 || head < BEAT[i + 1].t0);
+      set(n.d, 0, 0, reached ? lerp(0.6, 1, k) : 0.6, (reached ? 1 : 0.14) * (1 - out));
+      n.d.firstChild.style.color = sung ? "var(--sung)" : "var(--paper)";
+      n.box.style.borderColor = reached ? (sung ? "#ffd43b" : "#3b8eea") : "#34353b";
+      n.box.style.background = sung ? "rgba(255,212,59,.12)" : reached ? "rgba(59,142,234,.10)" : "transparent";
+      n.box.style.opacity = enter * (1 - out);
+    });
+    set($("q2"), 0, 0, 1, p(t, 15.6, 16) * (1 - out));
+  }
+
+  function s6(t) {
+    const cards = [["f1", 18.8, 19.55], ["f2", 19.55, 20.3], ["f3", 20.3, 21.05], ["f4", 21.05, 21.8]];
+    cards.forEach(([id, a, b]) => {
+      const el = $(id);
+      const on = t >= a && t < b;
+      el.style.display = on ? "block" : "none";
+      if (!on) return;
+      const lt = t - a;
+      el.style.transform = `translateY(${lerp(80, 0, E.expo(p(lt, 0, 0.25)))}px)`;
+      el.style.opacity = 1 - p(lt, 0.65, 0.75);
+    });
+    if (t >= 18.8 && t < 19.55) {
+      const lt = t - 18.8;
+      const idx = Math.min(PRESETS.length - 1, Math.floor(lt / 0.075));
+      const sub = (lt % 0.075) / 0.075;
+      const w = $("popWord");
+      const name = PRESETS[idx];
+      const tr = { "Pop": `scale(${lerp(0.6, 1.06, E.back(sub))})`, "Slide Up": `translateY(${lerp(80, 0, E.out(sub))}px)`, "Slide Down": `translateY(${lerp(-80, 0, E.out(sub))}px)`, "Bounce": `scale(${lerp(0.2, 1, E.back(sub))})`, "Word Pop": `scale(${lerp(0.4, 1, E.back(sub))})` }[name] || "none";
+      w.style.transform = tr;
+      w.style.opacity = name === "Fade" || name === "Typewriter" ? sub : 1;
+      w.style.color = name === "Karaoke" || name === "Highlight" ? "var(--sung)" : "var(--paper)";
+      $("presetList").innerHTML = PRESETS.map((n, i) => (i === idx ? `<b style="color:#f3f1ec">${n}</b>` : n)).slice(Math.max(0, idx - 2), idx + 3).join("  ·  ");
+    }
+    if (t >= 19.55 && t < 20.3) {
+      f2Rows.forEach((r, i) => set(r, lerp(1080, 0, E.expo(p(t, 19.6 + i * 0.04, 19.85 + i * 0.04))), 0, 1, 1));
+    }
+    if (t >= 20.3 && t < 21.05) {
+      fmtNodes.forEach((n, i) => {
+        const k = E.back(p(t, 20.36 + i * 0.06, 20.6 + i * 0.06));
+        set(n, 0, lerp(140, 0, k), lerp(0.6, 1, k), p(t, 20.36 + i * 0.06, 20.45 + i * 0.06), lerp(-8, (i % 2 ? 3 : -3), k));
+      });
+    }
+    if (t >= 21.05 && t < 21.8) {
+      const k = E.back(p(t, 21.1, 21.4));
+      set($("offline"), 0, 0, lerp(0.6, 1, k), p(t, 21.1, 21.2));
+      $("tick").style.strokeDasharray = "14";
+      $("tick").style.strokeDashoffset = `${14 * (1 - E.out(p(t, 21.3, 21.55)))}`;
+    }
+  }
+
+  function s7(t) {
+    const k = E.back(p(t, 21.85, 22.25));
+    set($("mark2"), 0, 0, lerp(0.3, 0.86, k), p(t, 21.85, 21.95));
+    const wm = E.out(p(t, 21.95, 22.4));
+    $("wm2").style.clipPath = `inset(0 ${lerp(100, 0, wm)}% 0 0)`;
+    END.forEach((e, i) => {
+      const kk = p(t, e.t, e.t + 0.2);
+      const sung = t >= e.t && (i === END.length - 1 ? true : t < END[i + 1].t);
+      set(endNodes[i], 0, 0, lerp(0.5, 1, E.back(kk)), kk > 0 ? 1 : 0);
+      endNodes[i].firstChild.style.color = sung ? "var(--sung)" : "var(--paper)";
+    });
+    set($("e2"), 0, lerp(20, 0, E.out(p(t, 23.2, 23.5))), 1, p(t, 23.2, 23.5));
+    set($("e3"), 0, lerp(20, 0, E.out(p(t, 23.35, 23.65))), 1, p(t, 23.35, 23.65));
+  }
+
+  const UPD = { s1, s2, s3, s4, s5, s6, s7 };
+
+  function render(t) {
+    t = clamp(t, 0, DUR - 1 / FPS);
+    for (const s of SCENES) {
+      const on = t >= s.a && t < s.b;
+      s.el.style.display = on ? "block" : "none";
+      if (on) UPD[s.id](t);
+    }
+    // corner brand from the end of the reveal until the end card
+    const b = $("brand");
+    const bo = p(t, 9.5, 9.65) * (1 - p(t, 21.75, 21.85));
+    b.style.visibility = bo > 0 ? "visible" : "hidden";
+    b.style.opacity = bo;
+    // playhead wipes at scene changes (the After Effects CTI)
+    const wipes = [3.1, 14.55, 18.55];
+    const w = $("wipe");
+    let shown = false;
+    for (const a of wipes) {
+      const k = p(t, a, a + 0.42);
+      if (k > 0 && k < 1) {
+        w.style.visibility = "visible";
+        w.style.transform = `translateX(${lerp(-40, 1120, E.inout(k))}px)`;
+        shown = true;
+      }
+    }
+    if (!shown) w.style.visibility = "hidden";
+    drawGrain(Math.round(t * FPS));
+    $("tc").textContent = tc(t);
+    $("scrub").value = t;
+    document.querySelectorAll("#chips button").forEach((c, i) => c.setAttribute("aria-current", String(t >= SCENES[i].a && t < SCENES[i].b)));
+  }
+
+  // ---------------------------------------------------------------- player
+  const frame = $("frame"), stage = $("stage");
+  const isRender = /render/.test(location.search);
+  if (isRender) document.body.classList.add("render");
+  function fit() {
+    let k = 1;
+    if (!isRender) {
+      const maxH = Math.max(320, window.innerHeight - 170);
+      const maxW = Math.min(window.innerWidth - 32, 1080);
+      k = Math.min(maxW / 1080, maxH / 1920);
+    }
+    frame.style.width = `${1080 * k}px`;
+    frame.style.height = `${1920 * k}px`;
+    stage.style.transform = `scale(${k})`;
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  const chips = $("chips");
+  SCENES.forEach((s) => {
+    const b = document.createElement("button");
+    b.textContent = s.name;
+    b.addEventListener("click", () => { pos = s.a; startAt = performance.now() - pos * 1000; render(pos); });
+    chips.appendChild(b);
+  });
+
+  let playing = false, pos = 0, startAt = 0;
+  const playBtn = $("play");
+  function setPlaying(v) {
+    playing = v;
+    playBtn.textContent = v ? "❚❚" : "▶";
+    playBtn.setAttribute("aria-label", v ? "Pause" : "Play");
+    if (v) { if (pos >= DUR - 0.05) pos = 0; startAt = performance.now() - pos * 1000; requestAnimationFrame(tick); }
+  }
+  function tick(now) {
+    if (!playing) return;
+    pos = (now - startAt) / 1000;
+    if (pos >= DUR) { pos = 0; startAt = now; } // loop like a social ad
+    render(pos);
+    requestAnimationFrame(tick);
+  }
+  playBtn.addEventListener("click", () => setPlaying(!playing));
+  $("restart").addEventListener("click", () => { pos = 0; render(0); setPlaying(true); });
+  $("scrub").addEventListener("input", (e) => { pos = parseFloat(e.target.value); startAt = performance.now() - pos * 1000; render(pos); });
+  document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target.tagName !== "INPUT") { e.preventDefault(); setPlaying(!playing); } });
+
+  /** Scale any text block wider than the safe area (948px) down to fit, measured with the real font. */
+  function fitText() {
+    const blocks = [hookEl, beatEl, endEl, ...document.querySelectorAll("#s2 .lines, #s3 .disp, #s7 .disp, #s4 .disp, #s5 .disp, #s6 .disp")];
+    for (const b of blocks) {
+      const scene = b.closest(".scene");
+      const prev = scene.style.display;
+      scene.style.display = "block";
+      b.style.transform = "";
+      const lines = b.classList.contains("lines") ? [...b.children] : [b];
+      const widest = Math.max(...lines.map((l) => l.scrollWidth));
+      const avail = b.style.textAlign === "center" || b === endEl ? 1080 - 96 : 1080 - 2 * 66;
+      if (widest > avail) {
+        const k = avail / widest;
+        b.style.transformOrigin = b === endEl || b.style.textAlign === "center" ? "50% 0" : "0 0";
+        b.style.transform = `scale(${k})`;
+        b.dataset.fit = k.toFixed(3);
+      }
+      scene.style.display = prev;
+    }
+  }
+  window.__fit = fitText;
+  window.__render = render;
+  const still = 22.0 + 1.6; // complete end card for thumbnails and reduced motion
+  if (document.fonts) document.fonts.ready.then(() => { fitText(); render(pos); });
+  if (isRender) render(0);
+  else if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { pos = still; render(still); }
+  else {
+    render(still);
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { pos = 0; setPlaying(true); });
+  }
+})();
+</script>
