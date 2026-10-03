@@ -6,7 +6,7 @@ every fixture with timing-accuracy measurement, alignment, cancellation and
 temp-file cleanup. Works against the dev tree or a packaged backend:
 
   python run_backend_tests.py --cmd "python -m autocaption"
-  python run_backend_tests.py --cmd "wine backend/AutoCaptionBackend.exe"
+  python run_backend_tests.py --cmd 'wine "AutoCaption Engine/AutoCaption Engine.exe" --panel' --wine
 
 Writes a JSON report (--report) with every measured number.
 """

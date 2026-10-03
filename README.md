@@ -17,7 +17,8 @@ uploaded: transcription runs in a bundled local engine.
 | `extension/src/ui/` | Panel UI (Preact) |
 | `extension/src/host/` | Platform adapter (CEP today; the core never touches CEP APIs, so a UXP adapter can replace it) |
 | `extension/host/host.jsx` | After Effects ExtendScript: selection, audio render, text layer creation |
-| `build/` | Reproducible build: model fetcher, Windows backend builder, launcher, release assembler, installers |
+| `build/` | Reproducible build: model fetcher, engine folder builder (`build_backend.py`, `make_pak.py`), launcher, release assembler, installer files |
+| `docs/marketing/` | The motion ad: HTML timeline, frame renderer, voice-over / sound effect / mix scripts |
 | `tests/` | Synthetic audio fixtures with exact ground truth, backend API and long-form tests |
 
 ## How timing works
@@ -35,14 +36,28 @@ Rendering the audio through After Effects means start time, trims, time
 stretch, time remap and nested precomps are already applied; the mapping back
 to composition time is a pure offset.
 
+## Engine folder (what ships)
+
+```
+AutoCaption Engine/
+  AutoCaption Engine.exe     launcher; only runs when the panel starts it (--panel + signed launch token)
+  engine.pak                 engine code, models and data, read in place (half-precision word-timing weights)
+  bin/                       embeddable CPython 3.11, trimmed site-packages, GPU DLLs (cuda/), ffmpeg.exe, manifest.json
+  Third-party notices.txt    every bundled component and its license
+```
+
+The panel never names the components inside the engine: it shows "Engine",
+"Fast" / "Accurate" and plain-language checks. `build_release.py` enforces this
+with a wording audit (component names and long dashes in user-facing text).
+
 ## Building
 
 Linux or Windows build machine with Python 3.11, Node 22 and mingw-w64:
 
 ```
 python build/fetch_models.py out/models-stage
-python build/build_backend.py out/build/backend --models out/models-stage
-python build/build_release.py --backend out/build/backend --out out/release
+python build/build_backend.py "out/build/AutoCaption Engine" --models out/models-stage
+python build/build_release.py --engine "out/build/AutoCaption Engine" --out out/release
 ```
 
 On Windows, `build_release.bat` runs the whole pipeline. Runtime dependencies
@@ -53,7 +68,7 @@ are pinned in `build/requirements-win.lock`; model revisions are pinned in
 
 ```
 cd extension && npx vitest run            # core + ExtendScript host (mock AE) tests
-node tests/ui/e2e.mjs <backend> <shots>   # real panel in Chromium + real engine + simulated AE host
+node tests/ui/e2e.mjs <engine dir> <shots>   # real panel in Chromium + real engine + simulated AE host
 python tests/backend/run_backend_tests.py --cmd "python -m autocaption"   # API, security, timing, cancel
 python tests/backend/run_longform.py --cmd "python -m autocaption"        # 10 s .. 60 min
 ```
@@ -65,5 +80,7 @@ are about 10 ms on clean speech.
 ## License
 
 MIT for this project. Bundled third-party components keep their own licenses
-(see `LICENSES/` in the release). The French, German, Spanish and Italian
-alignment models are CC BY-NC 4.0.
+(see `AutoCaption Engine/Third-party notices.txt` in the release). The French,
+German, Spanish and Italian word-timing models are CC BY-NC 4.0.
+
+Made by cyriqvfx.
