@@ -1,21 +1,32 @@
 """Entry point.
 
-  AutoCaptionBackend.exe                 start the local API server
-  AutoCaptionBackend.exe --self-test     run the end-to-end self test (JSON lines)
-  AutoCaptionBackend.exe --verify        check backend files against manifest.json
-  AutoCaptionBackend.exe --version
+  "AutoCaption Engine.exe" --panel                 start the local API server
+  "AutoCaption Engine.exe" --panel --self-test     end-to-end self test (JSON lines)
+  "AutoCaption Engine.exe" --panel --verify        check files against bin/manifest.json
+  "AutoCaption Engine.exe" --panel --version
+
+Every mode requires the launch token the panel provides (see launchkey.py).
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 
 def main(argv: list[str]) -> int:
     if argv and argv[0] == "worker":
+        # The worker is only useful with the server's private socket credentials.
+        if "AUTOCAPTION_WORKER_KEY" not in os.environ:
+            return 64
         from .worker import main as worker_main
 
         return worker_main()
+    from . import launchkey
+
+    if not launchkey.check():
+        sys.stderr.write(launchkey.MESSAGE + "\n")
+        return 64
     if "--version" in argv:
         from . import __version__
 

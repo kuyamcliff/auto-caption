@@ -1,13 +1,16 @@
-"""`AutoCaptionBackend.exe --self-test`: real end-to-end checks of this backend.
+"""Engine self-test: real end-to-end checks, run from the panel's Verify step.
 
 Emits one JSON object per line so the panel can tick rows off live, then a
-final {"summary": ...} line. Exit code 0 only when every required check passed.
+final {"summary": ...} line. Exit code 0 only when every required check
+passed. Row labels and details are written for the panel, so they describe
+what each check means to the user, never which components implement it.
+Full technical detail goes to the engine log.
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
-import platform
 import sys
 import time
 import traceback
@@ -15,6 +18,7 @@ import traceback
 from . import __version__, integrity, paths
 
 EXPECTED = "the quick brown fox jumps over the lazy dog".split()
+log = logging.getLogger("autocaption.selftest")
 
 
 class Runner:
@@ -31,16 +35,11 @@ class Runner:
         t = time.monotonic()
         try:
             status, detail, value = fn()
-        except Exception as exc:  # noqa: BLE001
-            status, detail, value = "fail", f"{type(exc).__name__}: {exc}", None
-            tb = traceback.format_exc()
-            detail_full = tb[-2500:]
-        else:
-            detail_full = None
+        except Exception:  # noqa: BLE001
+            log.error("self-test check %s failed:\n%s", cid, traceback.format_exc())
+            status, detail, value = "fail", "This check failed. See the engine log for details.", None
         row = {"check": cid, "label": label, "status": status, "detail": detail, "required": required,
                "seconds": round(time.monotonic() - t, 2)}
-        if detail_full:
-            row["trace"] = detail_full
         self.results.append(row)
         self.emit(row)
         return value
@@ -60,60 +59,81 @@ def main(argv: list[str]) -> int:
     r = Runner(out)
     ctx: dict = {}
 
-    def backend():
-        m = integrity.load_manifest()
-        if m is None:
-            return "fail", "manifest.json is missing", None
-        ctx["manifest"] = m
-        return "pass", f"AutoCaption backend {__version__} ({m.get('platform')})", None
+    def engine():
+        if integrity.load_manifest() is None:
+            return "fail", "The engine folder is incomplete.", None
+        from .pak import engine_pak
+
+        ctx["pak"] = engine_pak()
+        return "pass", f"Version {__version__}", None
 
     def runtime():
         import numpy  # noqa: F401
-        import torch
-        import ctranslate2
+        import torch  # noqa: F401
+        import ctranslate2  # noqa: F401
         import faster_whisper  # noqa: F401
         import whisperx  # noqa: F401
         import pyannote.audio  # noqa: F401
+        from .pak import prepare_runtime_data
+
+        prepare_runtime_data()
         from nltk.data import load as nltk_load
 
         nltk_load("tokenizers/punkt_tab/english.pickle")
-        return "pass", f"Python {platform.python_version()}, torch {torch.__version__}, " \
-                       f"CTranslate2 {ctranslate2.__version__}", None
+        return "pass", "Ready", None
 
     def files():
         res = integrity.verify(full=full_hash)
+        pak_res = ctx["pak"].verify("")  # every model and data entry, SHA-256 (cached after first run)
+        if not pak_res["ok"]:
+            log.error("damaged pak entries: %s", pak_res["damaged"][:20])
+            res["ok"] = False
+            res["corruptCount"] += len(pak_res["damaged"])
         if not res["ok"]:
-            bad = (res["missing"] + res["corrupt"])[:5]
-            return "fail", f"{res['missingCount']} missing, {res['corruptCount']} damaged: {', '.join(bad)}", None
-        return "pass", f"{res['checked']} files verified" + (" (SHA-256)" if full_hash else ""), None
+            return "fail", f"{res['missingCount'] + res['corruptCount']} files are missing or damaged. " \
+                           "Copy a fresh engine folder from the download.", None
+        return "pass", f"{res['checked']:,} files verified", None
 
     def permissions():
-        for d in (paths.temp_root(), paths.logs_dir()):
+        for d in (paths.temp_root(), paths.logs_dir(), paths.cache_dir()):
             probe = d / f".write-test-{os.getpid()}"
             probe.write_text("ok")
             probe.unlink()
-        return "pass", "Temporary and log folders are writable", None
+        return "pass", "Temporary files can be written", None
 
-    def ffmpeg():
-        from .audio import decode, ffmpeg_version
+    def decoder():
+        import io
+        import wave
 
-        v = ffmpeg_version()
-        audio = decode(paths.backend_root() / "selftest" / "selftest.wav")
+        import numpy as np
+
+        from .audio import decode
+
+        data = ctx["pak"].read(ctx["pak"].registry["selftest"])
+        tmp = paths.temp_root() / f"selftest-{os.getpid()}.wav"
+        tmp.write_bytes(data)
+        try:
+            audio = decode(tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+        with wave.open(io.BytesIO(data)) as w:
+            expected = w.getnframes() / w.getframerate()
+        if abs(len(audio) / 16000 - expected) > 0.1 or not np.isfinite(audio).all():
+            return "fail", "Audio could not be decoded correctly.", None
         ctx["audio"] = audio
-        return "pass", f"FFmpeg {v}; decoded {len(audio) / 16000:.1f}s test clip", None
+        return "pass", "Ready", None
 
-    def vad():
+    def silence():
         from .registry import Registry
 
-        reg = Registry()
+        reg = Registry(ctx["pak"])
         ctx["registry"] = reg
-        if reg.vad is None:
-            return "fail", "VAD model missing", None
         from whisperx.vads import Pyannote
 
-        Pyannote("cpu", token=None, model_fp=str(reg.vad.path / "pytorch_model.bin"), vad_onset=0.5,
+        vad_dir = ctx["pak"].extract(reg.vad["prefix"])
+        Pyannote("cpu", token=None, model_fp=str(vad_dir / "pytorch_model.bin"), vad_onset=0.5,
                  vad_offset=0.363, chunk_size=30)
-        return "pass", "Voice activity detection loaded", None
+        return "pass", "Ready", None
 
     def make_engine():
         from .pipeline import Engine
@@ -129,88 +149,83 @@ def main(argv: list[str]) -> int:
 
             eng = make_engine()
             if model not in eng.registry.whisper:
-                return "fail", f"{model} model is not installed", None
+                return "fail", "Not installed. Copy a fresh engine folder from the download.", None
             res = eng.transcribe(ctx["audio"], Options(model=model, language=language, device=device),
                                  lambda *a: None, lambda: False)
             validate_result(res)
-            got = [w["text"].lower().strip(".,!?") for w in res["words"]]
+            got = [w["text"].lower().strip(".,") for w in res["words"]]
             hits = sum(1 for w in EXPECTED if w in got)
             ctx[f"result_{model}_{device}"] = res
+            log.info("self-test %s/%s: %s", model, device, " ".join(got))
             if hits < 6:
-                return "fail", f"Recognised only {hits}/9 test words: {' '.join(got)[:120]}", res
-            aligned = sum(1 for w in res["words"] if w["timingSource"] == "aligned")
-            return "pass", f"{hits}/9 words recognised, {aligned} aligned, language {res['language']}, " \
-                           f"{res['timings'].get('totalSec')}s on {res['device'].upper()}", res
+                return "fail", "The test recording was not transcribed correctly.", res
+            return "pass", f"Test recording transcribed in {res['timings'].get('totalSec')} s", res
         return fn
 
-    def small_load():
-        from faster_whisper import WhisperModel
+    def accurate_load():
+        from whisperx.asr import WhisperModel
 
         eng = make_engine()
-        if "small" not in eng.registry.whisper:
-            return "fail", "Small model is not installed", None
-        WhisperModel(str(eng.registry.whisper["small"].path), device="cpu", compute_type="int8",
-                     local_files_only=True)
-        return "pass", "Model loads", None
+        if "accurate" not in eng.registry.whisper:
+            return "fail", "Not installed. Copy a fresh engine folder from the download.", None
+        pak = eng.registry.pak
+        prefix = eng.registry.whisper["accurate"].info["prefix"]
+        WhisperModel("accurate", device="cpu", compute_type="int8", local_files_only=True,
+                     files={n[len(prefix):]: pak.read(n) for n in pak.names(prefix)})
+        return "pass", "Ready", None
 
-    def alignment():
-        res = ctx.get("result_base_cpu")
-        if res is None:
-            return "fail", "No transcription to align", None
-        if not res["aligned"]:
-            return "fail", "Word alignment did not run", None
+    def timing_en():
+        res = ctx.get("result_fast_cpu")
+        if res is None or not res["aligned"]:
+            return "fail", "Word timing did not run.", None
         ws = res["words"]
-        ok = all(b["start"] >= a["start"] for a, b in zip(ws, ws[1:]))
-        first = next((w for w in ws if w["text"].lower().strip(".,") == "quick"), None)
-        if not ok:
-            return "fail", "Word timings are out of order", None
-        detail = f"{len(ws)} words aligned"
-        if first:
-            detail += f"; 'quick' at {first['start']:.2f}s"
-        return "pass", detail, None
+        if not all(b["start"] >= a["start"] for a, b in zip(ws, ws[1:])):
+            return "fail", "Word timing came out in the wrong order.", None
+        return "pass", f"{len(ws)} words timed", None
 
-    def other_alignment():
-        rows = [m for m in integrity.model_status(ctx.get("manifest")) if m["kind"] == "align"]
-        bad = [m["id"] for m in rows if not m["ok"]]
-        if bad:
-            return "fail", f"Damaged alignment models: {', '.join(bad)}", None
+    def timing_other():
+        eng = make_engine()
+        langs = sorted(k for k in eng.registry.align if k != "en")
+        res = eng.registry.pak.verify("models/timing/")
+        if not res["ok"]:
+            return "fail", "Some language files are damaged. Copy a fresh engine folder from the download.", None
         if not quick:
-            eng = make_engine()
-            for m in rows:
-                if m["id"] != "en":
-                    eng._load_align(m["id"])
-        return "pass", ", ".join(sorted(m["id"] for m in rows)) + (" verified" if quick else " loaded"), None
+            for lang in langs:
+                eng._load_align(lang)
+        names = [eng.registry.align[k].label for k in langs]
+        return "pass", ", ".join(names), None
 
     def gpu():
         from .sysinfo import gpu_info
 
         info = gpu_info()
         if not info.get("cudaDevices"):
-            return "info", "No compatible NVIDIA GPU found. The CPU will be used.", None
+            return "info", "Not available. Your processor will be used.", None
         try:
-            res = transcribe_check("base", "cuda", "en")()
-            if res[0] == "pass" and ctx.get("result_base_cuda", {}).get("device") == "cuda":
-                return "pass", f"{info.get('name') or 'NVIDIA GPU'} ready", None
-            return "warn", "GPU detected but could not be initialised. The CPU will be used.", None
-        except Exception as exc:  # noqa: BLE001
-            return "warn", f"GPU detected but unusable ({type(exc).__name__}). The CPU will be used.", None
+            status = transcribe_check("fast", "cuda", "en")()[0]
+            if status == "pass" and ctx.get("result_fast_cuda", {}).get("device") == "gpu":
+                return "pass", f"{info.get('name') or 'Graphics card'} ready", None
+        except Exception:  # noqa: BLE001
+            log.warning("graphics acceleration check failed:\n%s", traceback.format_exc())
+        return "warn", "Your graphics card could not be used. Your processor will be used instead.", None
 
-    r.run("backend", "Backend", backend)
-    r.run("runtime", "Runtime", runtime)
-    r.run("files", "Backend files", files)
-    r.run("permissions", "Permissions", permissions)
-    r.run("ffmpeg", "FFmpeg", ffmpeg)
-    r.run("vad", "VAD", vad)
-    if "audio" in ctx:
-        r.run("whisper-base", "Whisper Base", transcribe_check("base", "cpu"))
-        r.run("whisper-small", "Whisper Small",
-              small_load if quick else transcribe_check("small", "cpu", "en"))
-        r.run("align-en", "English Alignment", alignment)
-    r.run("align-other", "Other languages", other_alignment, required=False)
-    r.run("gpu", "GPU", gpu, required=False)
-    cpu_ok = any(x["check"] == "whisper-base" and x["status"] == "pass" for x in r.results)
-    r.run("cpu", "CPU fallback", lambda: ("pass", "CPU transcription works", None) if cpu_ok
-          else ("fail", "CPU transcription failed", None))
+    r.run("engine", "Engine", engine)
+    if "pak" in ctx:
+        r.run("runtime", "Engine runtime", runtime)
+        r.run("files", "File integrity", files)
+        r.run("permissions", "Permissions", permissions)
+        r.run("decoder", "Audio decoding", decoder)
+        r.run("silence", "Speech detection", silence)
+        if "audio" in ctx:
+            r.run("speech-fast", "Fast transcription", transcribe_check("fast", "cpu"))
+            r.run("speech-accurate", "Accurate transcription",
+                  accurate_load if quick else transcribe_check("accurate", "cpu", "en"))
+            r.run("timing-en", "Word timing (English)", timing_en)
+        r.run("timing-other", "Word timing (other languages)", timing_other, required=False)
+        r.run("gpu", "Graphics acceleration", gpu, required=False)
+    cpu_ok = any(x["check"] == "speech-fast" and x["status"] == "pass" for x in r.results)
+    r.run("cpu", "Processor fallback", lambda: ("pass", "Ready", None) if cpu_ok
+          else ("fail", "Transcription on the processor failed.", None))
     failed = [x for x in r.results if x["required"] and x["status"] == "fail"]
     r.emit({"summary": {"ok": not failed, "failed": [x["check"] for x in failed], "version": __version__,
                         "checks": len(r.results)}})

@@ -217,9 +217,9 @@ class JobManager:
             log.exception("could not start job")
             self._finish(job, "failed", error={"code": "ENGINE_START_FAILED",
                                                 "message": "The transcription engine could not start.",
-                                                "detail": str(exc),
-                                                "hint": ["The backend is incomplete.", "A model file is missing.",
-                                                         "The GPU runtime is unavailable."]})
+                                                "detail": f"Reference {job.id[:8]}",
+                                                "hint": ["The engine folder is incomplete.", "A file in the engine folder is missing.",
+                                                         "Graphics acceleration could not start."]})
 
     def _on_event(self, msg: dict) -> None:
         ev = msg.get("event")
@@ -231,8 +231,8 @@ class JobManager:
                 else:
                     self._finish(job, "failed", error={
                         "code": "WORKER_CRASHED", "message": "The transcription engine stopped unexpectedly.",
-                        "detail": f"worker exit code {msg.get('code')}",
-                        "hint": ["The computer may have run out of memory.", "Try the Base model or the CPU device."]})
+                        "detail": f"Reference {job.id[:8]} (exit {msg.get('code')})",
+                        "hint": ["The computer may have run out of memory.", "Try the Fast quality or the processor setting."]})
             return
         job = self.jobs.get(str(msg.get("jobId")))
         if job is None or job.done:

@@ -81,7 +81,7 @@ def parse_transcribe(body: dict, registry: Registry) -> tuple[dict, Path]:
     o = body.get("options") or {}
     if not isinstance(o, dict) or set(o) - {"model", "language", "device", "batchSize", "vad", "threads"}:
         raise ApiError(400, "BAD_REQUEST", "Invalid options.")
-    model = str(o.get("model", "base"))
+    model = str(o.get("model", "fast"))
     if not MODEL_RE.match(model) or model not in registry.whisper:
         raise ApiError(400, "MODEL_MISSING", f"Model '{model}' is not installed in this backend.")
     lang = str(o.get("language", "auto")).lower()
@@ -220,7 +220,7 @@ def make_handler(app: App):
                                      "orphansCleaned": app.jobs.orphans_cleaned})
                 elif path == "/manifest":
                     m = integrity.load_manifest() or {}
-                    m = {k: v for k, v in m.items() if k != "files"}
+                    m = {k: m.get(k) for k in ("product", "backendVersion", "platform", "minExtensionVersion", "maxExtensionVersion")}
                     self._json(200, {"ok": True, "manifest": m})
                 elif path == "/models":
                     self._json(200, {"ok": True, **app.registry.describe()})
@@ -335,6 +335,7 @@ def serve(port: int = 0, idle_exit_sec: int = 600) -> int:
     httpd.daemon_threads = True
     app.httpd = httpd
     actual = httpd.server_address[1]
+    logger.info("components: %s", sysinfo.component_versions())
     logger.info("backend %s listening on 127.0.0.1:%d (pid %d, python %s)", __version__, actual, os.getpid(),
                 platform.python_version())
     sys.stdout.write(json.dumps({"event": "ready", "port": actual, "token": token, "pid": os.getpid(),

@@ -72,7 +72,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cmd", required=True)
     ap.add_argument("--minutes", default="0.17,1,5,15,30,60")
-    ap.add_argument("--model", default="base")
+    ap.add_argument("--model", default="fast")
     ap.add_argument("--report", default="longform-report.json")
     args = ap.parse_args()
     temp_root = Path(tempfile.gettempdir()) / "AutoCaptionAE"

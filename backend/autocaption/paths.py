@@ -1,8 +1,14 @@
-"""Filesystem locations used by the backend.
+"""Filesystem locations used by the engine.
 
-Everything the backend *reads* lives inside the backend folder (relocatable,
-no absolute build paths). Everything it *writes* lives in per-user locations:
-temp audio in %TEMP%\\AutoCaptionAE, logs in %LOCALAPPDATA%\\AutoCaptionAE\\logs.
+Engine folder layout (relocatable, no absolute build paths):
+
+  AutoCaption Engine/
+    AutoCaption Engine.exe     launcher (only starts when the panel launches it)
+    engine.pak                 engine code, models and data (read in place)
+    bin/                       native runtime, libraries, decoder, manifest.json
+
+Everything the engine *writes* lives in per-user locations: temp audio in
+%TEMP%\\AutoCaptionAE, logs and a small data cache in %LOCALAPPDATA%\\AutoCaptionAE.
 """
 from __future__ import annotations
 
@@ -12,33 +18,36 @@ import tempfile
 from pathlib import Path
 
 APP_DIR_NAME = "AutoCaptionAE"
+PAK_NAME = "engine.pak"
 
 
 def backend_root() -> Path:
-    """Folder that contains manifest.json.
-
-    Packaged layout: backend/runtime/python.exe + backend/app/autocaption/...
-    Dev layout: repo/backend/autocaption (models via AUTOCAPTION_BACKEND_ROOT).
-    """
+    """The engine folder (the one that contains engine.pak)."""
     env = os.environ.get("AUTOCAPTION_BACKEND_ROOT")
     if env:
         return Path(env).resolve()
-    here = Path(__file__).resolve().parent  # .../app/autocaption
-    return here.parent.parent
+    # Packaged: this file is .../AutoCaption Engine/engine.pak/app/autocaption/paths.py
+    for parent in Path(os.path.abspath(__file__)).parents:
+        if parent.name == PAK_NAME:
+            return parent.parent
+    return Path(__file__).resolve().parent.parent  # development tree
 
 
-def models_dir() -> Path:
-    return backend_root() / "models"
+def pak_path() -> Path:
+    return backend_root() / PAK_NAME
+
+
+def bin_dir() -> Path:
+    return backend_root() / "bin"
 
 
 def manifest_path() -> Path:
-    return backend_root() / "manifest.json"
+    return bin_dir() / "manifest.json"
 
 
 def ffmpeg_exe() -> Path | None:
-    root = backend_root() / "ffmpeg"
     for name in ("ffmpeg.exe", "ffmpeg"):
-        p = root / name
+        p = bin_dir() / name
         if p.is_file():
             return p
     if os.environ.get("AUTOCAPTION_DEV") == "1":
@@ -78,10 +87,15 @@ def logs_dir() -> Path:
     return p
 
 
+def cache_dir() -> Path:
+    p = user_data_dir() / "engine-cache"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def configure_offline_environment() -> None:
-    """Hard-disable every download/telemetry path of the ML libraries and point
-    their caches at the bundled data. Must run before importing torch & co."""
-    root = backend_root()
+    """Hard-disable every download/telemetry path of the bundled libraries and
+    point their caches at private folders. Must run before importing them."""
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     os.environ["HF_DATASETS_OFFLINE"] = "1"
@@ -89,8 +103,6 @@ def configure_offline_environment() -> None:
     os.environ["DO_NOT_TRACK"] = "1"
     os.environ["PYANNOTE_METRICS_ENABLED"] = "0"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["NLTK_DATA"] = str(root / "models" / "nltk")
-    # Caches go to an empty private dir so nothing outside the backend is used.
     cache = user_data_dir() / "cache"
     os.environ["HF_HOME"] = str(cache / "hf")
     os.environ["TORCH_HOME"] = str(cache / "torch")
@@ -99,8 +111,8 @@ def configure_offline_environment() -> None:
     if ff is not None:
         os.environ["PATH"] = str(ff.parent) + os.pathsep + os.environ.get("PATH", "")
     if sys.platform == "win32":
-        # CUDA runtime DLLs for CTranslate2 (cuBLAS / cuDNN) ship in runtime/cuda.
-        cuda = root / "runtime" / "cuda"
+        # Graphics-acceleration runtime DLLs ship in bin/cuda.
+        cuda = bin_dir() / "cuda"
         if cuda.is_dir():
             os.environ["PATH"] = str(cuda) + os.pathsep + os.environ["PATH"]
             try:

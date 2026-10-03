@@ -90,33 +90,26 @@ def free_disk_bytes(path) -> int | None:
 
 
 def diagnostics(app=None) -> dict:
-    m = integrity.load_manifest() or {}
-    try:
-        from .audio import ffmpeg_version
-
-        ff = ffmpeg_version()
-    except Exception:  # noqa: BLE001
-        ff = None
+    """What the panel's Diagnostics page shows: hardware and engine state only.
+    Component versions are written to the engine log instead."""
     ram = total_ram_bytes()
+    gpu = gpu_info()
     return {
-        "backendVersion": __version__,
-        "platform": m.get("platform", f"{sys.platform}-{platform.machine()}"),
-        "python": platform.python_version(),
-        "whisperx": m.get("whisperxVersion"),
-        "fasterWhisper": m.get("fasterWhisperVersion"),
-        "ctranslate2": m.get("ctranslate2Version"),
-        "torch": m.get("torchVersion"),
-        "torchaudio": m.get("torchaudioVersion"),
-        "ffmpeg": ff or m.get("ffmpegVersion"),
-        "models": {k: v.get("revision") for k, v in m.get("models", {}).items()},
-        "alignmentModels": {k: v.get("bundle") for k, v in m.get("alignmentModels", {}).items()},
+        "engineVersion": __version__,
+        "platform": (integrity.load_manifest() or {}).get("platform", f"{sys.platform}-{platform.machine()}"),
         "os": f"{platform.system()} {platform.release()} ({platform.version()})",
         "cpu": cpu_name(),
         "cpuCores": os.cpu_count(),
         "ramGB": round(ram / 1024**3, 1) if ram else None,
-        "gpu": gpu_info(),
+        "gpu": {"available": bool(gpu.get("cudaDevices")), "name": gpu.get("name"), "memory": gpu.get("memory")},
         "tempFreeGB": (lambda b: round(b / 1024**3, 1) if b else None)(free_disk_bytes(paths.temp_root())),
         "engineRunning": bool(app and app.jobs.worker.alive()),
         "logsDir": str(paths.logs_dir()),
-        "backendDir": str(paths.backend_root()),
+        "engineDir": str(paths.backend_root()),
     }
+
+
+def component_versions() -> dict:
+    """Detailed versions for the engine log (not shown in the panel)."""
+    m = integrity.load_manifest() or {}
+    return {k: v for k, v in m.items() if k.endswith("Version")}

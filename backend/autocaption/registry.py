@@ -1,16 +1,14 @@
-"""Model registry.
+"""Model registry, read from engine.pak's registry.json.
 
-Built from the model_info.json files that the build writes next to every bundled
-model. Adding a language later means dropping a folder into models/align/<lang>
-with its model_info.json -- no engine changes.
+Speech models are identified by quality level ("fast", "accurate"); word
+timing models by language code. Adding a language later means adding an
+entry to the pak registry, with no engine changes.
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from pathlib import Path
 
-from . import paths
+from .pak import Pak, engine_pak
 
 # Human readable names for the language picker / warnings.
 LANGUAGE_NAMES = {
@@ -31,41 +29,24 @@ class ModelEntry:
     kind: str
     id: str
     label: str
-    path: Path
     info: dict = field(default_factory=dict)
 
     def public(self) -> dict:
-        return {
-            "id": self.id,
-            "label": self.label,
-            "revision": self.info.get("revision"),
-            "license": self.info.get("license"),
-            "source": self.info.get("source"),
-            "sizeBytes": sum(f.get("size", 0) for f in self.info.get("files", {}).values()),
-        }
+        # Only what the panel shows; no technology or model names.
+        return {"id": self.id, "label": self.label, "description": self.info.get("description", "")}
 
 
 class Registry:
-    def __init__(self, root: Path | None = None):
-        self.root = root or paths.models_dir()
-        self.whisper: dict[str, ModelEntry] = {}
-        self.align: dict[str, ModelEntry] = {}
-        self.vad: ModelEntry | None = None
-        self._scan()
-
-    def _scan(self) -> None:
-        for info_path in sorted(self.root.glob("*/*/model_info.json")) + sorted(self.root.glob("vad/model_info.json")):
-            try:
-                info = json.loads(info_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            entry = ModelEntry(info.get("kind", ""), info.get("id", ""), info.get("label", ""), info_path.parent, info)
-            if entry.kind == "whisper":
-                self.whisper[entry.id] = entry
-            elif entry.kind == "align":
-                self.align[entry.id] = entry
-            elif entry.kind == "vad":
-                self.vad = entry
+    def __init__(self, pak: Pak | None = None):
+        self.pak = pak or engine_pak()
+        reg = self.pak.registry
+        self.whisper: dict[str, ModelEntry] = {
+            k: ModelEntry("speech", k, v.get("label", k.title()), v) for k, v in reg.get("speech", {}).items()
+        }
+        self.align: dict[str, ModelEntry] = {
+            k: ModelEntry("timing", k, v.get("label", k), v) for k, v in reg.get("timing", {}).items()
+        }
+        self.vad = reg.get("vad")
 
     def whisper_model(self, model_id: str) -> ModelEntry:
         if model_id not in self.whisper:
@@ -76,19 +57,10 @@ class Registry:
         return self.align.get(language)
 
     def describe(self) -> dict:
-        order = {"base": 0, "small": 1}
+        order = {"fast": 0, "accurate": 1}
         return {
-            "whisper": [
-                m.public() | {"description": WHISPER_DESCRIPTIONS.get(m.id, "")}
-                for m in sorted(self.whisper.values(), key=lambda m: order.get(m.id, 9))
-            ],
-            "alignment": [m.public() | {"language": m.id} for m in sorted(self.align.values(), key=lambda m: m.id)],
-            "vad": self.vad.public() if self.vad else None,
-            "languages": [{"code": c, "name": n, "aligned": c in self.align} for c, n in sorted(LANGUAGE_NAMES.items(), key=lambda kv: kv[1])],
+            "quality": [m.public() for m in sorted(self.whisper.values(), key=lambda m: order.get(m.id, 9))],
+            "timing": [{"language": m.id, "label": m.label} for m in sorted(self.align.values(), key=lambda m: m.id)],
+            "languages": [{"code": c, "name": n, "aligned": c in self.align}
+                          for c, n in sorted(LANGUAGE_NAMES.items(), key=lambda kv: kv[1])],
         }
-
-
-WHISPER_DESCRIPTIONS = {
-    "base": "Fastest default",
-    "small": "Higher transcription quality",
-}

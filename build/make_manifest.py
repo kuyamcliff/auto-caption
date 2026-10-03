@@ -1,4 +1,6 @@
-"""Write backend/manifest.json: versions, model registry and SHA-256 of every file."""
+"""Write bin/manifest.json for an engine folder: versions and SHA-256 of every file
+(launcher, engine.pak, bin/). Model entries inside engine.pak are listed in the
+pak's own registry."""
 from __future__ import annotations
 
 import argparse
@@ -29,23 +31,10 @@ def main() -> int:
     root = Path(args.backend_dir).resolve()
     versions = json.loads(Path(args.versions).read_text(encoding="utf-8"))
 
-    models, align, vad = {}, {}, None
-    for info_path in sorted((root / "models").glob("**/model_info.json")):
-        info = json.loads(info_path.read_text(encoding="utf-8"))
-        rel = info_path.parent.relative_to(root).as_posix()
-        entry = {"path": rel, "label": info["label"], "revision": info.get("revision"),
-                 "source": info.get("source"), "license": info.get("license"),
-                 "sizeBytes": sum(f["size"] for f in info.get("files", {}).values())}
-        if info["kind"] == "whisper":
-            models[info["id"]] = entry
-        elif info["kind"] == "align":
-            align[info["id"]] = entry | {"bundle": info.get("bundle")}
-        elif info["kind"] == "vad":
-            vad = entry
-
     files = {}
     for p in sorted(root.rglob("*")):
-        if p.is_file() and p.name != "manifest.json" and "__pycache__" not in p.parts:
+        rel = p.relative_to(root).as_posix() if p.is_file() else ""
+        if p.is_file() and rel != "bin/manifest.json" and "__pycache__" not in p.parts:
             files[p.relative_to(root).as_posix()] = {"sha256": sha256_of(p), "size": p.stat().st_size}
 
     manifest = {
@@ -56,12 +45,10 @@ def main() -> int:
         "platform": args.platform,
         "builtAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         **versions,
-        "models": models,
-        "alignmentModels": align,
-        "vad": vad,
         "files": files,
     }
-    (root / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    (root / "bin").mkdir(exist_ok=True)
+    (root / "bin" / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     print(f"manifest: {len(files)} files, {sum(f['size'] for f in files.values()) / 1e9:.2f} GB")
     return 0
 

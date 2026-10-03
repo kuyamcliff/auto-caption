@@ -103,7 +103,7 @@ def main() -> int:
                 raise Cancelled()
             if cmd == "transcribe":
                 o = msg.get("options") or {}
-                opts = Options(model=str(o.get("model", "base")), language=str(o.get("language", "auto")),
+                opts = Options(model=str(o.get("model", "fast")), language=str(o.get("language", "auto")),
                                device=str(o.get("device", "auto")), batch_size=int(o.get("batchSize", 0) or 0),
                                vad=str(o.get("vad", "pyannote")), threads=int(o.get("threads", 0) or 0))
                 result = engine.transcribe(audio, opts, progress, cancelled)
@@ -119,19 +119,19 @@ def main() -> int:
             if cancelled():
                 emit({"event": "cancelled", "jobId": job_id})
             else:
+                # Technical detail stays in the engine log; the panel gets a reference.
                 emit({"event": "error", "jobId": job_id, "code": exc.code, "message": str(exc),
-                      "detail": getattr(exc, "detail", ""), "hint": getattr(exc, "hint", [])})
+                      "detail": f"Reference {job_id[:8]}", "hint": getattr(exc, "hint", [])})
         except MemoryError:
             emit({"event": "error", "jobId": job_id, "code": "OUT_OF_MEMORY",
                   "message": "The computer ran out of memory while transcribing.",
-                  "hint": ["Close other applications", "Use the Base model", "Transcribe a shorter section"]})
-        except Exception as exc:  # noqa: BLE001
-            tb = traceback.format_exc()
-            log.error("job %s crashed:\n%s", job_id, tb)
+                  "hint": ["Close other applications", "Use the Fast quality", "Transcribe a shorter section"]})
+        except Exception:  # noqa: BLE001
+            log.error("job %s crashed:\n%s", job_id, traceback.format_exc())
             emit({"event": "error", "jobId": job_id, "code": "ENGINE_ERROR",
                   "message": "The transcription engine stopped unexpectedly.",
-                  "detail": f"{type(exc).__name__}: {exc}\n{tb[-3000:]}",
-                  "hint": ["Verify the backend", "Try again with the CPU device"]})
+                  "detail": f"Reference {job_id[:8]}",
+                  "hint": ["Verify the engine", "Try again with the processor (Settings, Advanced)"]})
         finally:
             cancel_ids.discard(job_id)
     return 0

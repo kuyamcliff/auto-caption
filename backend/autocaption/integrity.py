@@ -1,4 +1,9 @@
-"""Backend integrity verification against manifest.json (SHA-256)."""
+"""Engine integrity verification against bin/manifest.json (SHA-256).
+
+The manifest covers every file in the engine folder (launcher, engine.pak,
+bin/). Entries inside engine.pak are additionally verified against the pak's
+own registry, so a damaged model is reported precisely.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -60,7 +65,7 @@ def verify(full: bool = False, only_prefix: str | None = None) -> dict:
         if st.st_size != meta.get("size"):
             corrupt.append(rel)
             continue
-        if full or rel.startswith("models/"):
+        if full or rel.endswith(".exe") and "/" not in rel:
             stamp = f"{st.st_size}:{st.st_mtime_ns}"
             cached = entries.get(rel)
             if cached and cached.get("stamp") == stamp:
@@ -80,18 +85,20 @@ def verify(full: bool = False, only_prefix: str | None = None) -> dict:
 
 
 def model_status(manifest: dict | None = None) -> list[dict]:
-    """Per-model integrity rows for the verification screen."""
-    manifest = manifest or load_manifest() or {}
+    """Per-model integrity rows (entries inside engine.pak, SHA-256 checked)."""
+    from .pak import PakError, engine_pak
+
+    try:
+        pak = engine_pak()
+    except PakError:
+        return [{"kind": "engine", "id": "pak", "ok": False}]
     rows = []
-    groups = [("whisper", m) for m in manifest.get("models", {})] + \
-             [("align", lang) for lang in manifest.get("alignmentModels", {})]
-    if manifest.get("vad"):
-        groups.append(("vad", None))
-    for kind, key in groups:
-        prefix = f"models/{kind}/{key}/" if key else "models/vad/"
-        res = verify(False, prefix)
-        rows.append({"kind": kind, "id": key or "vad", "ok": res["ok"] and res["checked"] > 0,
-                     "missing": res["missingCount"], "corrupt": res["corruptCount"]})
+    reg = pak.registry
+    for kind, items in (("speech", reg.get("speech", {})), ("timing", reg.get("timing", {}))):
+        for key, info in items.items():
+            prefix = info.get("prefix") or info["entry"]
+            res = pak.verify(prefix)
+            rows.append({"kind": kind, "id": key, "ok": res["ok"] and res["checked"] > 0})
     return rows
 
 

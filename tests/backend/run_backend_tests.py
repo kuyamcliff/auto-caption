@@ -16,6 +16,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import shlex
 import shutil
 import statistics
@@ -42,8 +43,13 @@ MEDIAN_TOL = 0.08
 STRESS = {"background_noise": {"accuracy": 0.5, "median": 0.08, "within": 60}}
 
 
+sys.path.insert(0, str(HERE.parent.parent / "backend"))
+from autocaption import launchkey  # noqa: E402
+
+
 class Backend:
     def __init__(self, cmd: list[str], env: dict):
+        env = {**env, "AUTOCAPTION_LAUNCH": launchkey.token()}
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                      env=env)
         line = self.proc.stdout.readline().decode("utf-8", "replace")
@@ -182,7 +188,7 @@ def main() -> int:
     ap.add_argument("--temp-root", help="AutoCaptionAE temp folder as seen from this host")
     ap.add_argument("--wine", action="store_true", help="translate paths to Z:\\ for a Wine-hosted backend")
     ap.add_argument("--fixtures", default="all")
-    ap.add_argument("--model", default="base")
+    ap.add_argument("--model", default="fast")
     ap.add_argument("--skip-long", action="store_true")
     args = ap.parse_args()
 
@@ -211,9 +217,9 @@ def main() -> int:
         st, body = be.request("GET", "/health")
         check("health", st == 200 and body.get("ok"), json.dumps({k: body.get(k) for k in ("version", "apiVersion")}))
         st, body = be.request("GET", "/models")
-        names = [m["id"] for m in body.get("whisper", [])]
-        check("models lists base and small", st == 200 and {"base", "small"} <= set(names), ",".join(names))
-        langs = [m["language"] for m in body.get("alignment", [])]
+        names = [m["id"] for m in body.get("quality", [])]
+        check("models lists fast and accurate", st == 200 and {"fast", "accurate"} <= set(names), ",".join(names))
+        langs = [m["language"] for m in body.get("timing", [])]
         check("alignment registry includes en", "en" in langs, ",".join(langs))
         st, body = be.request("GET", "/manifest")
         check("manifest endpoint", st == 200 and body["manifest"].get("product") == "AutoCaption AE")
@@ -351,8 +357,14 @@ def main() -> int:
 
         st, body = be.request("GET", "/diagnostics")
         d = body.get("diagnostics", {})
-        check("diagnostics endpoint", st == 200 and "backendVersion" in d,
-              f"cpu={d.get('cpu')}, ram={d.get('ramGB')}GB, ffmpeg={d.get('ffmpeg')}")
+        check("diagnostics endpoint", st == 200 and "engineVersion" in d,
+              f"cpu={d.get('cpu')}, ram={d.get('ramGB')}GB, gpu={d.get('gpu')}")
+        # Nothing the panel can display may name the technology inside the engine.
+        banned = re.compile(r"whisper|torch|ctranslate|pyannote|wav2vec|ffmpeg|cuda|nltk|python|hugging|silero|cudnn|cublas", re.I)
+        shown = json.dumps([body, be.request("GET", "/models")[1], be.request("GET", "/manifest")[1],
+                            results["fixtures"]])
+        leaks = sorted(set(m.group(0).lower() for m in banned.finditer(shown)))
+        check("panel-visible engine responses name no technology", not leaks, ", ".join(leaks))
         check("diagnostics contain no session token", be.token not in json.dumps(body))
     finally:
         be.stop()

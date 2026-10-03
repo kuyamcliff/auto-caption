@@ -46,7 +46,7 @@ class EngineError(Exception):
 
 @dataclass
 class Options:
-    model: str = "base"
+    model: str = "fast"
     language: str = "auto"
     device: str = "auto"  # auto | cpu | cuda
     batch_size: int = 0  # 0 = automatic
@@ -67,7 +67,10 @@ class Engine:
     """Keeps loaded models between jobs; one whisper model + up to two aligners."""
 
     def __init__(self, registry: Registry | None = None):
+        from .pak import prepare_runtime_data
+
         self.registry = registry or Registry()
+        prepare_runtime_data()
         self._asr = None
         self._asr_key: tuple | None = None
         self._align: dict[tuple, tuple] = {}
@@ -102,16 +105,22 @@ class Engine:
         self.unload_asr()
         entry = self.registry.whisper_model(model_id)
         compute_type = "float16" if device == "cuda" else "int8"
-        fw = WhisperModel(str(entry.path), device=device, compute_type=compute_type,
-                          cpu_threads=_cpu_threads(threads), local_files_only=True)
+        # Model files are read straight out of engine.pak (no unpacking).
+        pak = self.registry.pak
+        prefix = entry.info["prefix"]
+        files = {name[len(prefix):]: pak.read(name) for name in pak.names(prefix)}
+        fw = WhisperModel(model_id, device=device, compute_type=compute_type,
+                          cpu_threads=_cpu_threads(threads), local_files_only=True, files=files)
+        del files
         vad_model = None
         if vad != "off":
             from whisperx.vads import Pyannote
 
-            vad_fp = self.registry.vad.path / "pytorch_model.bin" if self.registry.vad else None
-            vad_model = Pyannote("cpu", token=None, model_fp=str(vad_fp) if vad_fp else None,
+            vad_dir = pak.extract(self.registry.vad["prefix"])
+            vad_model = Pyannote("cuda" if device == "cuda" and _torch_cuda() else "cpu", token=None,
+                                 model_fp=str(vad_dir / "pytorch_model.bin"),
                                  vad_onset=0.500, vad_offset=0.363, chunk_size=30)
-        pipe = whisperx.load_model(str(entry.path), device=device, compute_type=compute_type,
+        pipe = whisperx.load_model(model_id, device=device, compute_type=compute_type,
                                    model=fw, vad_model=vad_model if vad_model is not None else _no_vad(),
                                    local_files_only=True, threads=_cpu_threads(threads))
         self._asr, self._asr_key = pipe, key
@@ -123,8 +132,6 @@ class Engine:
         gc.collect()
 
     def _load_align(self, language: str):
-        import whisperx
-
         entry = self.registry.align_model(language)
         if entry is None:
             return None
@@ -134,9 +141,7 @@ class Engine:
         if len(self._align) >= 2:
             self._align.pop(next(iter(self._align)))
             gc.collect()
-        bundle = entry.info.get("bundle")
-        model, meta = whisperx.load_align_model(language, "cpu", model_name=bundle, model_dir=str(entry.path),
-                                                model_cache_only=True)
+        model, meta = load_timing_model(self.registry.pak, language, entry.info)
         self._align[key] = (model, meta)
         return model, meta
 
@@ -167,19 +172,19 @@ class Engine:
 
         device = self.resolve_device(opts.device)
         if opts.device in ("cuda", "gpu") and device != "cuda":
-            warnings.append({"code": "GPU_UNAVAILABLE", "message": "GPU acceleration is not available. Using CPU."})
+            warnings.append({"code": "GPU_UNAVAILABLE", "message": "Graphics acceleration is not available. Your processor is being used."})
         progress("loading", None, "Loading speech model")
         check()
         try:
             pipe = self._load_asr(opts.model, device, opts.vad, opts.threads)
         except KeyError:
-            raise EngineError("MODEL_MISSING", f"The {opts.model} model is not installed in this backend.")
+            raise EngineError("MODEL_MISSING", "This quality level is not installed in the engine.")
         except Exception as exc:  # noqa: BLE001
             if device == "cuda":
                 log.warning("CUDA init failed, falling back to CPU: %s", exc)
                 self._cuda_failed = True
                 warnings.append({"code": "GPU_FALLBACK",
-                                 "message": "GPU acceleration could not be initialized. Falling back to CPU."})
+                                 "message": "Graphics acceleration could not start. Your processor is being used instead."})
                 device = "cpu"
                 pipe = self._load_asr(opts.model, device, opts.vad, opts.threads)
             else:
@@ -209,7 +214,7 @@ class Engine:
         except Exception as exc:  # noqa: BLE001
             log.exception("alignment model failed to load")
             warnings.append({"code": "ALIGN_LOAD_FAILED",
-                             "message": "The word alignment model could not be loaded; using Whisper word timing.",
+                             "message": "Precise word timing could not start, so word timing is estimated.",
                              "detail": str(exc)[:500]})
         aligned = aligner is not None
 
@@ -219,8 +224,8 @@ class Engine:
             segments = self._asr_pass(pipe, audio, language, batch, progress, check)
         else:
             warnings.append({"code": "NO_ALIGNMENT_MODEL",
-                             "message": "Word alignment is not available for this language. "
-                                        "Word timing comes from Whisper and is less precise."})
+                             "message": "Precise word timing is not available for this language. "
+                                        "Word timing is estimated and may be less exact."})
             segments = self._fallback_pass(pipe, audio, language, opts.vad, progress, check)
         timings["transcribeSec"] = round(time.monotonic() - t1, 2)
         check()
@@ -242,8 +247,8 @@ class Engine:
         if aligned and segments and failed == len(segments):
             log.error("forced alignment failed for every segment (%d)", failed)
             warnings.insert(0, {"code": "ALIGNMENT_FAILED",
-                                "message": "Word alignment failed, so word timing is estimated. "
-                                           "Run Verify Backend; the backend folder may be damaged."})
+                                "message": "Precise word timing failed, so word timing is estimated. "
+                                           "Run Verify Engine in Settings."})
         timings["totalSec"] = round(time.monotonic() - t0, 2)
         return {
             "schemaVersion": SCHEMA_VERSION,
@@ -251,9 +256,8 @@ class Engine:
             "languageProbability": None if lang_prob is None else round(lang_prob, 3),
             "noSpaces": language in NO_SPACE_LANGUAGES,
             "model": opts.model,
-            "device": device,
+            "device": "gpu" if device == "cuda" else "cpu",
             "aligned": aligned,
-            "alignmentModel": self.registry.align[language].info.get("bundle") if aligned else None,
             "durationSec": round(duration, 3),
             "audio": stats,
             "words": words,
@@ -275,7 +279,7 @@ class Engine:
         progress("loading", None, "Loading alignment model")
         aligner = self._load_align(language)
         if aligner is None:
-            raise EngineError("NO_ALIGNMENT_MODEL", "Word alignment is not available for this language.")
+            raise EngineError("NO_ALIGNMENT_MODEL", "Precise word timing is not available for this language.")
         segs = []
         for s in segments:
             text = re.sub(r"\s+", " ", str(s.get("text", ""))).strip()
@@ -375,6 +379,27 @@ class Engine:
             log.exception("alignment failed for one segment")
             return None
         return out.get("word_segments") or None
+
+
+def load_timing_model(pak, language: str, info: dict):
+    """Build a word-timing model from half-precision weights stored in engine.pak."""
+    import io
+
+    import torch
+    import torchaudio
+    from torchaudio.pipelines._wav2vec2 import utils as w2v_utils
+
+    bundle = getattr(torchaudio.pipelines, info["bundle"])
+    state = torch.load(io.BytesIO(pak.read(info["entry"])), map_location="cpu", weights_only=True)
+    state = {k: (v.float() if v.is_floating_point() else v) for k, v in state.items()}
+    model = w2v_utils._get_model(bundle._model_type, bundle._params)
+    model.load_state_dict(state)
+    if getattr(bundle, "_normalize_waveform", False):
+        model = w2v_utils._extend_model(model, normalize_waveform=True)
+    model.eval()
+    labels = bundle.get_labels()
+    meta = {"language": language, "dictionary": {c.lower(): i for i, c in enumerate(labels)}, "type": "torchaudio"}
+    return model, meta
 
 
 def _no_vad():
@@ -597,11 +622,11 @@ def _quality_warnings(words: list[dict], aligned: bool) -> list[dict]:
     inferred = sum(1 for w in words if w["timingSource"] in ("inferred", "fallback"))
     if aligned and inferred / len(words) > 0.15:
         warnings.append({"code": "PARTIAL_ALIGNMENT",
-                         "message": f"{inferred} of {len(words)} words could not be aligned exactly. "
+                         "message": f"{inferred} of {len(words)} words could not be timed exactly. "
                                     "Their timing was estimated from nearby words."})
     scored = [w["score"] for w in words if "score" in w]
     if aligned and len(scored) >= 10 and float(np.median(scored)) < 0.45:
         warnings.append({"code": "LOW_CONFIDENCE",
-                         "message": "Alignment confidence is low. Music, noise or overlapping voices can "
+                         "message": "Timing confidence is low. Music, noise or overlapping voices can "
                                     "reduce timing accuracy. Check the captions before using them."})
     return warnings
