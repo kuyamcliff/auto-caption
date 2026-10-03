@@ -1,17 +1,22 @@
 import { useEffect, useState } from "preact/hooks";
 import { EXPORT_FORMATS } from "../../core/formats";
 import { CaptionEditor } from "../components/CaptionEditor";
-import { ErrorCard, MenuButton, Notice, Seg } from "../components/common";
+import { AsyncButton, ErrorCard, MenuButton, Notice, runBusy, Seg } from "../components/common";
 import { Preview } from "../components/Preview";
 import { StylePanel } from "../components/StylePanel";
 import type { ErrorAction } from "../errors";
 import { Icon } from "../icons";
-import { getStore, useStore, type JobState } from "../store";
+import { getStore, qualityLabel, useStore, type JobState, type RecentEntry } from "../store";
+import { Credit } from "./Onboarding";
 
 const LANG_FALLBACK = [
   ["en", "English"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["it", "Italian"], ["pt", "Portuguese"],
   ["ja", "Japanese"], ["ko", "Korean"], ["zh", "Chinese"], ["ru", "Russian"], ["nl", "Dutch"], ["hi", "Hindi"],
 ] as const;
+
+function deviceLabel(device: string) {
+  return /^(gpu|cuda)$/i.test(device) ? "Graphics card" : "Processor"; // stored value, not shown
+}
 
 function layerIcon(type: string) {
   return type === "audio" ? Icon.wave() : type === "video" ? Icon.film() : type === "precomp" ? Icon.layers() : Icon.wave();
@@ -59,10 +64,10 @@ function SourceCard() {
 }
 
 const STEPS: { id: string; label: string }[] = [
-  { id: "extract", label: "Extracting composition audio" },
+  { id: "extract", label: "Rendering composition audio" },
   { id: "preparing", label: "Preparing audio" },
   { id: "transcribing", label: "Transcribing" },
-  { id: "aligning", label: "Aligning words" },
+  { id: "aligning", label: "Timing each word" },
   { id: "building", label: "Building captions" },
 ];
 
@@ -99,7 +104,7 @@ function JobProgress() {
   return (
     <div class="stack" aria-live="polite">
       <div class="row">
-        <span class="card-title grow">{job.kind === "align" ? "Aligning to audio" : "Transcribing"}</span>
+        <span class="card-title grow">{job.kind === "align" ? "Matching timing to audio" : "Transcribing"}</span>
         <span class="mono faint">{elapsed}</span>
       </div>
       <ul class="steps">
@@ -110,7 +115,7 @@ function JobProgress() {
           return (
             <li class={`step ${state}`} key={s.id}>
               <span class="step-ico">{state === "done" ? Icon.check({ size: 14 }) : state === "active" ? <span class="spinner" /> : <span class="circle" />}</span>
-              <span>{s.id === "preparing" && snap?.stage === "loading" && state === "active" ? "Loading speech model" : s.id === "transcribing" && snap?.stage === "detecting" && state === "active" ? "Detecting language" : s.label}</span>
+              <span>{s.id === "preparing" && snap?.stage === "loading" && state === "active" ? "Starting the engine" : s.id === "transcribing" && snap?.stage === "detecting" && state === "active" ? "Detecting language" : s.label}</span>
               {showPct ? <span class="pct">{Math.round((pct as number) * 100)}%</span> : null}
             </li>
           );
@@ -120,7 +125,9 @@ function JobProgress() {
         {typeof pct === "number" && (idx === 2 || idx === 3) ? <div class="progress-fill" style={{ width: `${Math.max(3, pct * 100)}%` }} /> : <div class="progress-fill progress-indet" />}
       </div>
       {job.note ? <div class="faint small">{job.note}</div> : null}
-      <button class="btn btn-block" disabled={cancelling} onClick={() => store.cancelJob()}>{cancelling ? "Cancelling…" : "Cancel"}</button>
+      {cancelling ? (
+        <button type="button" class="btn btn-block" aria-busy="true"><span class="spinner" aria-hidden="true" /> Cancelling…</button>
+      ) : <AsyncButton class="btn btn-block" busyText="Cancelling…" onClick={() => store.cancelJob()}>Cancel</AsyncButton>}
     </div>
   );
 }
@@ -137,16 +144,17 @@ function TranscribeCard() {
   const running = job.phase === "extracting" || job.phase === "running";
   const langs = models?.languages ?? LANG_FALLBACK.map(([code, name]) => ({ code, name, aligned: ["en", "es", "fr", "de", "it"].includes(code) }));
   const chosen = langs.find((l) => l.code === language);
-  const modelList = models?.whisper.length ? models.whisper : [{ id: "base", label: "Base", description: "Fastest default" }, { id: "small", label: "Small", description: "Higher transcription quality" }];
+  const modelList = models?.quality?.length ? models.quality : [{ id: "fast", label: "Fast", description: "Quickest results" }, { id: "accurate", label: "Accurate", description: "Best for difficult audio" }];
   const desc = modelList.find((m) => m.id === model)?.description;
 
   const onAction = (a: ErrorAction) => {
     if (a === "retry") store.transcribe({ model, language });
-    else if (a === "verify") { store.set({ screen: "settings", settingsTab: "backend" }); store.runVerify(true); }
-    else if (a === "locate") store.locateAndConnect();
+    else if (a === "verify") { store.set({ screen: "settings", settingsTab: "engine" }); return store.runVerify(true); }
+    else if (a === "locate") return store.locateAndConnect();
     else if (a === "language") { store.dismissJob(); document.getElementById("lang")?.focus(); }
     else if (a === "cpu") { store.saveConfig({ device: "cpu" }); store.transcribe({ model, language }); }
     else store.dismissJob();
+    return undefined;
   };
 
   return (
@@ -156,8 +164,8 @@ function TranscribeCard() {
         <>
           <div class="grid2">
             <div class="field">
-              <label>Model</label>
-              <Seg label="Model" full value={model} onChange={(v) => { setModel(v); store.saveConfig({ defaultModel: v }); }}
+              <label>Quality</label>
+              <Seg label="Quality" full value={model} onChange={(v) => { setModel(v); store.saveConfig({ defaultModel: v }); }}
                 options={modelList.map((m) => ({ value: m.id, label: m.label, title: m.description }))} />
               <span class="faint small">{desc}</span>
             </div>
@@ -167,13 +175,13 @@ function TranscribeCard() {
                 <option value="auto">Auto Detect</option>
                 {langs.map((l) => <option value={l.code} key={l.code}>{l.name}</option>)}
               </select>
-              <span class="faint small">{language === "auto" ? "Detected from the audio" : chosen?.aligned ? "Word alignment available" : "Estimated word timing"}</span>
+              <span class="faint small">{language === "auto" ? "Detected from the audio" : chosen?.aligned ? "Precise word timing" : "Estimated word timing"}</span>
             </div>
           </div>
           {job.phase === "failed" && job.error ? <ErrorCard error={job.error} onAction={onAction} onClose={() => store.dismissJob()} /> : null}
           {job.phase === "cancelled" ? <Notice kind="info" onClose={() => store.dismissJob()}>Transcription cancelled. Temporary files were removed.</Notice> : null}
           <button class="btn btn-primary btn-lg btn-block" disabled={sel.status !== "ready" || backend === "starting"} onClick={() => store.transcribe({ model, language })}>
-            {backend === "starting" ? <><span class="spinner" style={{ borderTopColor: "#fff" }} /> Starting engine…</> : <>{Icon.wave()} Transcribe</>}
+            {backend === "starting" ? <><span class="spinner" aria-hidden="true" /> Starting engine…</> : <>{Icon.wave()} Transcribe</>}
           </button>
         </>
       )}
@@ -181,26 +189,38 @@ function TranscribeCard() {
   );
 }
 
-function Recent() {
+function RecentRow({ r }: { r: RecentEntry }) {
   const store = getStore();
+  const [opening, setOpening] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const open = () => { if (!opening) runBusy(() => store.openRecent(r.id), setOpening); };
+  return (
+    <div class="cap" style={{ gridTemplateColumns: "1fr auto" }} role="button" tabIndex={0} aria-busy={opening}
+      onClick={open} onKeyDown={(e) => { if (e.key === "Enter") open(); }}>
+      <div style={{ minWidth: 0 }}>
+        <div class="ellipsis" style={{ fontWeight: 600 }}>{r.name}</div>
+        <div class="faint small">{r.captions} captions · {r.language.toUpperCase()} · {new Date(r.updatedAt).toLocaleString()}</div>
+      </div>
+      <div class="cap-actions" style={opening || removing ? { opacity: 1 } : undefined}>
+        {opening ? <span class="spinner" aria-label="Opening" /> : (
+          <button type="button" class="btn btn-ghost icon-btn sm" aria-label={`Remove ${r.name}`} title="Remove from list" aria-busy={removing}
+            onClick={(e) => { e.stopPropagation(); if (!removing) runBusy(() => store.removeRecent(r.id), setRemoving); }}>
+            {removing ? <span class="spinner" aria-hidden="true" /> : Icon.x({ size: 12 })}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Recent() {
   const recent = useStore((s) => s.recent);
   if (!recent.length) return null;
   return (
     <div class="card">
       <div class="card-head"><span class="card-title">Recent transcriptions</span><span class="faint small" style={{ marginLeft: "auto" }}>Reopen without transcribing again</span></div>
       <div style={{ padding: 4 }}>
-        {recent.slice(0, 6).map((r) => (
-          <div class="cap" style={{ gridTemplateColumns: "1fr auto" }} key={r.id} role="button" tabIndex={0}
-            onClick={() => store.openRecent(r.id)} onKeyDown={(e) => { if (e.key === "Enter") store.openRecent(r.id); }}>
-            <div style={{ minWidth: 0 }}>
-              <div class="ellipsis" style={{ fontWeight: 600 }}>{r.name}</div>
-              <div class="faint small">{r.captions} captions · {r.language.toUpperCase()} · {new Date(r.updatedAt).toLocaleString()}</div>
-            </div>
-            <div class="cap-actions">
-              <button class="btn btn-ghost icon-btn sm" aria-label={`Remove ${r.name}`} title="Remove from list" onClick={(e) => { e.stopPropagation(); store.removeRecent(r.id); }}>{Icon.x({ size: 12 })}</button>
-            </div>
-          </div>
-        ))}
+        {recent.slice(0, 6).map((r) => <RecentRow r={r} key={r.id} />)}
       </div>
     </div>
   );
@@ -217,9 +237,9 @@ function ProjectHeader() {
         <div class="source-ico ready">{layerIcon(p.source.layerType)}</div>
         <div class="grow" style={{ minWidth: 0 }}>
           <div class="source-name ellipsis">{p.source.layers.map((l) => l.name).join(", ") || p.project.name}</div>
-          <div class="faint small ellipsis">{p.source.composition} · {p.transcription.language.toUpperCase()} · {p.transcription.model === "import" ? "Imported" : `Whisper ${p.transcription.model}`}{p.transcription.device ? ` · ${p.transcription.device.toUpperCase()}` : ""}</div>
+          <div class="faint small ellipsis">{p.source.composition} · {p.transcription.language.toUpperCase()} · {qualityLabel(p.transcription.model)}{p.transcription.device ? ` · ${deviceLabel(p.transcription.device)}` : ""}</div>
         </div>
-        <button class="btn" onClick={() => store.closeProject()} title="Back to source selection">{Icon.plus({ size: 14 })} New</button>
+        <button type="button" class="btn" onClick={() => store.closeProject()} title="Back to source selection">{Icon.plus({ size: 14 })} New</button>
       </div>
       {!hidden && warnings.length ? (
         <Notice kind="warn" onClose={() => setHidden(true)}>
@@ -236,17 +256,21 @@ function ActionBar() {
   const busy = useStore((s) => s.busyCreate);
   return (
     <div class="actionbar">
-      <MenuButton up button={(open, toggle) => (
-        <button class="btn" aria-expanded={open} onClick={toggle}>{Icon.download({ size: 14 })} Export {Icon.chevron({ size: 12 })}</button>
+      <MenuButton up button={(open, toggle, working) => (
+        <button type="button" class="btn" aria-expanded={open} aria-busy={working} onClick={toggle}>
+          {working ? <span class="spinner" aria-hidden="true" /> : Icon.download({ size: 14 })} Export {Icon.chevron({ size: 12 })}
+        </button>
       )} items={[
         { label: "Export", heading: true },
         ...EXPORT_FORMATS.map((f) => ({ label: f.label, sub: f.hint, run: () => store.exportAs(f.id), disabled: !p })),
         { separator: true, label: "" },
         { label: "Import JSON, SRT or VTT…", icon: Icon.upload({ size: 14 }), run: () => store.importFile() },
       ]} />
-      <button class="btn btn-primary btn-lg grow" disabled={!p || busy} onClick={() => store.createLayers()}>
-        {busy ? <><span class="spinner" style={{ borderTopColor: "#fff" }} /> Creating layers…</> : <>{Icon.layers()} Create Text Layers</>}
-      </button>
+      {busy ? (
+        <button type="button" class="btn btn-primary btn-lg grow" aria-busy="true"><span class="spinner" aria-hidden="true" /> Creating layers…</button>
+      ) : (
+        <AsyncButton class="btn btn-primary btn-lg grow" icon={Icon.layers()} disabled={!p} onClick={() => store.createLayers()}>Create Text Layers</AsyncButton>
+      )}
     </div>
   );
 }
@@ -276,12 +300,12 @@ export function Main() {
       <div class="scroll">
         <div class="page">
           {backend.status === "missing" || backend.status === "unset" ? (
-            <ErrorCard error={backend.error ?? { code: "BACKEND_MISSING", title: "Backend not found", causes: ["The backend folder was moved, renamed or deleted."], actions: ["locate"] }}
+            <ErrorCard error={backend.error ?? { code: "ENGINE_MISSING", title: "Engine not found", causes: ["The AutoCaption Engine folder was moved, renamed or deleted."], actions: ["locate"] }}
               onAction={() => store.locateAndVerify()} />
           ) : null}
           {!p ? (
             <div class="cols" style={{ gridTemplateColumns: "minmax(0, 560px)", justifyContent: "center" }}>
-              <div class="col"><TranscribeCard /><Recent /></div>
+              <div class="col"><TranscribeCard /><Recent /><Credit /></div>
             </div>
           ) : (
             <div class="cols">

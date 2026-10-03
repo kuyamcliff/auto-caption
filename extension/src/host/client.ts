@@ -1,4 +1,4 @@
-// HTTP client for the local backend (127.0.0.1, per-session token).
+// HTTP client for the local engine (127.0.0.1, per-session token).
 
 import type { EngineResult } from "../core/types";
 
@@ -21,8 +21,10 @@ export class BackendError extends Error {
 }
 
 export interface ModelsInfo {
-  whisper: { id: string; label: string; description: string; sizeBytes: number; revision: string }[];
-  alignment: { language: string; label: string }[];
+  /** quality levels ("fast", "accurate") */
+  quality: { id: string; label: string; description: string }[];
+  /** languages with precise word timing */
+  timing: { language: string; label: string }[];
   languages: { code: string; name: string; aligned: boolean }[];
 }
 
@@ -45,7 +47,7 @@ export class BackendClient {
         signal: ctrl.signal,
       });
     } catch (e) {
-      throw new BackendError("BACKEND_UNREACHABLE", "The caption engine is not responding.", String(e));
+      throw new BackendError("ENGINE_UNREACHABLE", "The engine is not responding.", String(e));
     } finally {
       clearTimeout(timer);
     }
@@ -53,11 +55,11 @@ export class BackendClient {
     try {
       data = await res.json();
     } catch {
-      throw new BackendError("BAD_RESPONSE", "The caption engine sent an unexpected reply.", "", res.status);
+      throw new BackendError("BAD_RESPONSE", "The engine sent an unexpected reply.", "", res.status);
     }
     if (!res.ok || data.ok === false) {
       const err = data.error || {};
-      const e = new BackendError(err.code || "BACKEND_ERROR", err.message || "The caption engine reported an error.", "", res.status);
+      const e = new BackendError(err.code || "ENGINE_ERROR", err.message || "The engine reported an error.", err.detail || "", res.status);
       (e as BackendError & { jobId?: string }).jobId = data.jobId;
       throw e;
     }

@@ -83,16 +83,17 @@ def parse_transcribe(body: dict, registry: Registry) -> tuple[dict, Path]:
         raise ApiError(400, "BAD_REQUEST", "Invalid options.")
     model = str(o.get("model", "fast"))
     if not MODEL_RE.match(model) or model not in registry.whisper:
-        raise ApiError(400, "MODEL_MISSING", f"Model '{model}' is not installed in this backend.")
+        raise ApiError(400, "MODEL_MISSING", "That quality level is not available in this engine.")
     lang = str(o.get("language", "auto")).lower()
     if not LANG_RE.match(lang):
         raise ApiError(400, "BAD_REQUEST", "Invalid language.")
     device = str(o.get("device", "auto")).lower()
     if device not in ("auto", "cpu", "cuda", "gpu"):
         raise ApiError(400, "BAD_REQUEST", "Invalid device.")
-    vad = str(o.get("vad", "pyannote"))
-    if vad not in ("pyannote", "off"):
-        raise ApiError(400, "BAD_REQUEST", "Invalid VAD mode.")
+    vad = str(o.get("vad", "on"))
+    if vad not in ("on", "pyannote", "off"):
+        raise ApiError(400, "BAD_REQUEST", "Invalid skip-silence setting.")
+    vad = "off" if vad == "off" else "pyannote"
     payload["options"] = {"model": model, "language": lang, "device": device, "vad": vad,
                           "batchSize": int(_num(o.get("batchSize", 0), 0, 64, "batchSize")),
                           "threads": int(_num(o.get("threads", 0), 0, 64, "threads"))}

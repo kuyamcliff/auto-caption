@@ -9,7 +9,7 @@ import { MenuButton } from "./common";
 import { getStore, useStore } from "../store";
 
 const SOURCE_LABEL: Record<Word["timingSource"], string> = {
-  aligned: "Aligned", inferred: "Inferred", fallback: "Estimated", manual: "Manual",
+  aligned: "Precise", inferred: "Inferred", fallback: "Estimated", manual: "Manual",
 };
 
 function wordClass(w: Word) {
@@ -47,7 +47,7 @@ function WordTable({ v }: { v: CaptionView }) {
           <TimeInput value={w.start} label={`${w.text} start`} onCommit={(s) => store.apply("Word timing", (p) => E.setWordTiming(p, w.id, s, Math.max(s, w.end)))} />
           <TimeInput value={w.end} label={`${w.text} end`} onCommit={(e2) => store.apply("Word timing", (p) => E.setWordTiming(p, w.id, w.start, e2))} />
           <span class={`badge ${w.timingSource === "aligned" ? "ok" : w.timingSource === "manual" ? "accent" : w.timingSource === "inferred" ? "inferred" : "warn"}`}
-            title={w.score !== undefined ? `Alignment confidence ${Math.round(w.score * 100)}%` : undefined}>
+            title={w.score !== undefined ? `Timing confidence ${Math.round(w.score * 100)}%` : undefined}>
             {SOURCE_LABEL[w.timingSource]}
           </span>
         </div>
@@ -229,12 +229,12 @@ export function CaptionEditor() {
       <div class="card-head">
         <span class="card-title">Captions</span>
         <span class="badge">{all.length}</span>
-        {p.transcription.aligned ? <span class="badge ok hide-narrow" title="Word timing from forced alignment">Word-aligned</span>
-          : <span class="badge warn hide-narrow" title="Forced alignment was not available; word timing is estimated">Estimated timing</span>}
+        {p.transcription.aligned ? <span class="badge ok hide-narrow" title="Every word is timed from the audio">Precise timing</span>
+          : <span class="badge warn hide-narrow" title="Precise word timing was not available, so word timing is estimated">Estimated timing</span>}
         <span class="grow" />
         <button class="btn btn-ghost icon-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!canUndo} onClick={() => store.undo()}>{Icon.undo()}</button>
         <button class="btn btn-ghost icon-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!canRedo} onClick={() => store.redo()}>{Icon.redo()}</button>
-        <MenuButton right button={(open, toggle) => <button class="btn btn-ghost icon-btn" aria-label="More caption options" aria-expanded={open} onClick={toggle}>{Icon.more()}</button>}
+        <MenuButton right button={(open, toggle, busy) => <button type="button" class="btn btn-ghost icon-btn" aria-label="More caption options" aria-expanded={open} aria-busy={busy} onClick={toggle}>{busy ? <span class="spinner" aria-hidden="true" /> : Icon.more()}</button>}
           items={[
             { label: expanded.size ? "Collapse word timing" : "Show word timing for all", icon: Icon.clock({ size: 14 }), run: () => setExpanded(expanded.size ? new Set() : new Set(all.map((v) => v.id))) },
             { label: p.segment.maxLines === 2 ? "Single-line captions" : "Allow two lines", icon: Icon.list({ size: 14 }), run: () => store.setLines(p.segment.maxLines === 2 ? 1 : 2) },
@@ -244,7 +244,7 @@ export function CaptionEditor() {
               const c = await store.ask("Reset transcription edits?", "All text and timing edits are replaced by the original transcription. You can undo this.", [{ label: "Cancel", kind: "ghost" }, { label: "Reset", kind: "primary" }]);
               if (c === "Reset") store.apply("Reset edits", (pp) => E.resetEdits(pp));
             } },
-            ...(!p.transcription.aligned ? [{ label: "Align to selected audio", sub: "Replace estimated timing with real alignment", icon: Icon.wave({ size: 14 }), run: () => store.alignToAudio() }] : []),
+            ...(!p.transcription.aligned ? [{ label: "Match timing to selected audio", sub: "Replace estimated timing with precise word timing", icon: Icon.wave({ size: 14 }), run: () => store.alignToAudio() }] : []),
           ]} />
       </div>
       <div class="toolbar">
@@ -261,7 +261,7 @@ export function CaptionEditor() {
             onChange={async (e) => {
               const v = (e.target as HTMLSelectElement).value;
               if (v === "custom") {
-                const n = await store.prompt("Custom words per line", "Maximum words per caption (1–20)", String(wpl), "Apply");
+                const n = await store.prompt("Custom words per line", "Maximum words per caption (1 to 20)", String(wpl), "Apply");
                 const k = n ? parseInt(n, 10) : NaN;
                 if (k >= 1 && k <= 20) store.setWordsPerLine(k);
               } else store.setWordsPerLine(parseInt(v, 10));

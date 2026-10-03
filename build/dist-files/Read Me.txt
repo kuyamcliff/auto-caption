@@ -1,0 +1,40 @@
+AUTOCAPTION AE 1.0.0
+Made by cyriqvfx
+
+Getting started
+
+1. Keep this folder somewhere permanent, for example C:\Tools\AutoCaptionAE.
+   The "AutoCaption Engine" folder must stay with it.
+2. Double-click "Install AutoCaption.bat".
+3. Open (or restart) After Effects.
+4. Open Window > Extensions > AutoCaption AE.
+5. The panel finds the engine folder by itself. If it asks, click
+   "Choose Engine Folder" and pick the "AutoCaption Engine" folder.
+6. Wait for the check to finish (about a minute the first time).
+7. Select an audio, video or precomp layer and click Transcribe.
+8. Edit the captions, pick words per line and an animation.
+9. Click Create Text Layers.
+
+Good to know
+
+- Everything runs on this computer. Your audio never leaves it, and no
+  account or internet connection is needed.
+- Nothing else needs to be installed.
+- "AutoCaption Engine.exe" only runs when the panel starts it. Opening it
+  by hand just shows a short message.
+- Moved the engine folder? Open the panel's Settings > Engine and click
+  "Choose Engine Folder".
+- A supported NVIDIA graphics card is used automatically. Without one,
+  your processor is used.
+
+Requirements
+
+Windows 10 or 11 (64-bit), After Effects 2022 (22.0) or newer, about 5 GB
+of free disk space and 8 GB of RAM (16 GB recommended for Accurate quality
+on long recordings).
+
+Need help?
+
+Open Settings > Diagnostics in the panel and click "Copy diagnostics".
+The licenses of bundled components are in
+"AutoCaption Engine\Third-party notices.txt".

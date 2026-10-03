@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { promises as fsp, existsSync, statSync, readFileSync } from "node:fs";
 import { join, dirname, extname, resolve } from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 
 const root = resolve(process.argv[2] || "dist/extension");
 const port = parseInt(process.argv[3] || "4877", 10);
@@ -15,10 +16,19 @@ const cfg = JSON.parse(process.env.HARNESS_CONFIG || "{}");
 const state = { created: [], jumps: [], backend: null, dialogs: cfg.dialogs || {}, comp: cfg.comp, layer: cfg.layer, renderSource: cfg.renderSource };
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json" };
 
+// Same signed launch token the panel passes (src/host/cep.ts launchToken).
+const KEY = "6163652d656e67696e652d33663961" + "07" + "6379726971766678" + "11" + "6175746f63617074696f6e";
+function launchEnv() {
+  const key = KEY.match(/../g).map((h) => String.fromCharCode(parseInt(h, 16))).join("");
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const sig = crypto.createHmac("sha256", key).update(`${nonce}:autocaption-engine`).digest("hex");
+  return { ...process.env, ...(cfg.backendEnv || {}), AUTOCAPTION_LAUNCH: `${nonce}.${sig}` };
+}
+
 function startBackend() {
   return new Promise((res, rej) => {
     const [cmd, ...args] = cfg.backendCmd;
-    const p = spawn(cmd, args, { cwd: cfg.backendCwd, env: { ...process.env, ...(cfg.backendEnv || {}) }, stdio: ["pipe", "pipe", "pipe"] });
+    const p = spawn(cmd, args, { cwd: cfg.backendCwd, env: launchEnv(), stdio: ["pipe", "pipe", "pipe"] });
     state.backend = p;
     let buf = "";
     p.stdout.on("data", (d) => {
@@ -39,7 +49,7 @@ function selfTest(quick) {
     const [cmd, ...args] = cfg.backendCmd;
     const a = [...args, "--self-test"];
     if (quick) a.push("--quick");
-    const p = spawn(cmd, a, { cwd: cfg.backendCwd, env: { ...process.env, ...(cfg.backendEnv || {}) } });
+    const p = spawn(cmd, a, { cwd: cfg.backendCwd, env: launchEnv() });
     let out = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", () => undefined);
@@ -62,7 +72,7 @@ const rpc = {
   async chooseOpenFile() { return state.dialogs.open ?? null; },
   async chooseSaveFile({ defaultName }) { return state.dialogs.saveDir ? join(state.dialogs.saveDir, defaultName) : null; },
   async setDialogs(d) { Object.assign(state.dialogs, d); return true; },
-  async backendExe({ dir }) { return existsSync(join(dir, "manifest.json")) ? join(dir, "AutoCaptionBackend") : null; },
+  async backendExe({ dir }) { return existsSync(join(dir, "engine.pak")) ? join(dir, "AutoCaption Engine") : null; },
   async backendStart() { return startBackend(); },
   async backendStop() { state.backend?.stdin.end(); return true; },
   async selfTest({ quick }) { return selfTest(quick); },

@@ -3,7 +3,7 @@ import { ANIMATION_PRESETS } from "../../core/defaults";
 import { FALLBACK_FONTS } from "../../core/presets";
 import type { AnimationSettings, StyleSettings } from "../../core/types";
 import { Icon } from "../icons";
-import { MenuButton, Section, Seg } from "./common";
+import { AsyncButton, MenuButton, Section, Seg } from "./common";
 import { getStore, useStore } from "../store";
 
 /** Tiny looping demo per animation tile (CSS only, no timers). */
@@ -99,9 +99,9 @@ export function StylePanel() {
             <optgroup label="Built-in">{presets.filter((p) => p.builtIn).map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</optgroup>
             {mine.length ? <optgroup label="My Presets">{mine.map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</optgroup> : null}
           </select>
-          <button class="btn" onClick={() => store.savePreset()} title="Save the current style and animation as a preset">{Icon.save({ size: 14 })} Save</button>
+          <AsyncButton icon={Icon.save({ size: 14 })} onClick={() => store.savePreset()} title="Save the current style and animation as a preset">Save</AsyncButton>
           {current && !current.builtIn ? (
-            <MenuButton right button={(o, t) => <button class="btn btn-ghost icon-btn" aria-label="Preset options" aria-expanded={o} onClick={t}>{Icon.more()}</button>}
+            <MenuButton right button={(o, t, busy) => <button type="button" class="btn btn-ghost icon-btn" aria-label="Preset options" aria-expanded={o} aria-busy={busy} onClick={t}>{busy ? <span class="spinner" aria-hidden="true" /> : Icon.more()}</button>}
               items={[{ label: `Delete “${current.name}”`, icon: Icon.trash({ size: 14 }), run: () => store.deletePreset(current.id) }]} />
           ) : null}
         </div>

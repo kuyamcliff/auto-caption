@@ -98,14 +98,17 @@ class Worker:
             listener.settimeout(300)
             key = secrets.token_hex(16)
             env = dict(os.environ)
-            app_dir = str(Path(__file__).resolve().parent.parent)
-            env["PYTHONPATH"] = app_dir
+            # Packaged, the engine code lives inside engine.pak and bin/python311._pth
+            # already puts it on the path; the working directory must be a real folder.
+            app_dir = Path(__file__).resolve().parent.parent
+            if app_dir.is_dir():
+                env["PYTHONPATH"] = str(app_dir)
             env["PYTHONIOENCODING"] = "utf-8"
             env["AUTOCAPTION_WORKER_PORT"] = str(listener.getsockname()[1])
             env["AUTOCAPTION_WORKER_KEY"] = key
             self.proc = subprocess.Popen(
                 [sys.executable, "-X", "utf8", "-m", "autocaption", "worker"],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=app_dir, env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(paths.backend_root()), env=env,
                 creationflags=_NO_WINDOW,
             )
             threading.Thread(target=self._drain_stderr, args=(self.proc,), daemon=True).start()

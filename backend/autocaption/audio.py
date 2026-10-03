@@ -28,7 +28,7 @@ class AudioError(Exception):
 def _ffmpeg() -> str:
     exe = paths.ffmpeg_exe()
     if exe is None:
-        raise AudioError("FFMPEG_MISSING", "The audio decoder (FFmpeg) is missing from the backend folder.")
+        raise AudioError("FFMPEG_MISSING", "The audio decoder is missing from the engine folder. Copy a fresh engine folder from the download.")
     return str(exe)
 
 

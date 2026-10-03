@@ -1,20 +1,24 @@
 """Assemble the AutoCaption AE release.
 
-  python build/build_release.py --backend <built backend dir> --out <release dir>
+  python build/build_release.py --engine "<built AutoCaption Engine dir>" --out <release dir>
 
-Steps (each one logged): build the extension, run unit tests, collect
-licenses, write the backend manifest (SHA-256 of every file), run the network
-and placeholder audits, create extension.zip / backend.zip /
-AutoCaptionAE_COMPLETE_v1.0.0.zip, generate checksums, verify the archives by
-re-reading them, and report sizes.
+Steps (each one logged): run unit tests, build the extension, copy the engine
+folder, write its manifest (SHA-256 of every file), run the network,
+placeholder and wording audits, create AutoCaptionAE_v1.0.0_Windows.zip,
+generate checksums, verify the archive by re-reading it, and report sizes.
 
-The backend itself is produced by build/build_backend.py (see build_release.bat
-for the full pipeline on Windows).
+Release layout:
+  AutoCaptionAE/
+    Install AutoCaption.bat, Read Me.txt, Changelog.txt, License.txt, checksums.txt
+    extension/
+    AutoCaption Engine/   (AutoCaption Engine.exe, engine.pak, bin/, Third-party notices.txt)
+    tools/install.ps1
+
+The engine folder is produced by build/build_backend.py.
 """
 from __future__ import annotations
 
 import argparse
-import email.parser
 import hashlib
 import json
 import os
@@ -48,61 +52,6 @@ def dir_size(p: Path) -> int:
 
 def gb(n: int) -> str:
     return f"{n / 1e9:.2f} GB" if n >= 1e9 else f"{n / 1e6:.1f} MB"
-
-
-# ------------------------------------------------------------- licenses
-def collect_licenses(backend: Path, out_licenses: Path) -> None:
-    site = backend / "runtime" / "Lib" / "site-packages"
-    lines = ["AutoCaption AE - third-party software", "=" * 38, "",
-             "The backend bundles the following software. Each component remains under its own license;",
-             "full license texts are in backend/licenses/third_party/<package>/.", ""]
-    tp = backend / "licenses" / "third_party"
-    tp.mkdir(parents=True, exist_ok=True)
-    for dist in sorted(site.glob("*.dist-info"), key=lambda p: p.name.lower()):
-        meta_path = dist / "METADATA"
-        if not meta_path.exists():
-            continue
-        meta = email.parser.Parser().parsestr(meta_path.read_text(encoding="utf-8", errors="replace"))
-        name, ver = meta.get("Name", dist.name), meta.get("Version", "")
-        lic = meta.get("License-Expression") or (meta.get("License") or "").splitlines()[0:1]
-        lic = lic if isinstance(lic, str) else (lic[0] if lic else "")
-        if not lic or len(lic) > 80:
-            classifiers = [c.split("::")[-1].strip() for c in meta.get_all("Classifier") or [] if c.startswith("License ::")]
-            lic = ", ".join(classifiers) or (lic[:80] if lic else "see license file")
-        lines.append(f"{name} {ver} -- {lic} -- {meta.get('Home-page') or meta.get('Project-URL', '')}".rstrip(" -"))
-        files = [p for p in dist.rglob("*") if p.is_file() and re.search(r"(LICEN[CS]E|COPYING|NOTICE|AUTHORS)", p.name, re.I)]
-        if files:
-            d = tp / name
-            d.mkdir(parents=True, exist_ok=True)
-            for f in files:
-                shutil.copy2(f, d / f.name)
-    lines += ["", "Python runtime: CPython 3.11.9 embeddable distribution -- PSF License (runtime/LICENSE.txt)",
-              "FFmpeg 9.0.2 (gyan.dev essentials build) -- GPL v3. Source: https://ffmpeg.org/download.html ;",
-              "  build configuration and license: backend/licenses/ffmpeg/. FFmpeg is run as a separate program.",
-              "NVIDIA cuBLAS / cuDNN redistributable DLLs -- NVIDIA software license (backend/licenses/nvidia/).",
-              "Panel (extension): Preact (MIT). Panel code bundled with esbuild.", ""]
-    (out_licenses / "third_party_licenses.txt").write_text("\n".join(lines), encoding="utf-8")
-    shutil.copy2(out_licenses / "third_party_licenses.txt", backend / "licenses" / "third_party_licenses.txt")
-    py_lic = backend / "runtime" / "LICENSE.txt"
-    if py_lic.exists():
-        shutil.copy2(py_lic, backend / "licenses" / "python-LICENSE.txt")
-
-    mlines = ["AutoCaption AE - bundled models", "=" * 31, ""]
-    for info in sorted((backend / "models").glob("**/model_info.json")):
-        i = json.loads(info.read_text())
-        size = sum(f["size"] for f in i.get("files", {}).values())
-        mlines.append(f"{i['kind']:<8} {i['id']:<24} {gb(size):>9}  {i.get('license')}")
-        mlines.append(f"         source: {i.get('source')}  revision: {i.get('revision')}")
-        for fn, f in i.get("files", {}).items():
-            mlines.append(f"         {fn}  sha256={f['sha256']}")
-        mlines.append("")
-    mlines += ["NLTK punkt_tab sentence tokenizer data -- Apache 2.0 (models/nltk).",
-               "Note: the French/German/Spanish/Italian VoxPopuli alignment models are licensed CC BY-NC 4.0",
-               "(non-commercial). English alignment (wav2vec2 base 960h) is MIT.", ""]
-    (out_licenses / "models_licenses.txt").write_text("\n".join(mlines), encoding="utf-8")
-    shutil.copy2(out_licenses / "models_licenses.txt", backend / "licenses" / "models_licenses.txt")
-    (backend / "licenses" / "AutoCaptionAE-LICENSE.txt").write_text((REPO / "LICENSE").read_text(), encoding="utf-8")
-    shutil.copy2(REPO / "LICENSE", out_licenses / "AutoCaptionAE-LICENSE.txt")
 
 
 # ---------------------------------------------------------------- audits
@@ -161,8 +110,34 @@ def placeholder_scan(report: Path) -> bool:
     return not hits
 
 
+# Words the panel and the user-facing files must never show (the engine's
+# components are not named anywhere a user looks), and dashes the copy avoids.
+TECH_WORDS = re.compile(r"whisper|pytorch|torch|ctranslate|pyannote|wav2vec|ffmpeg|cuda|cudnn|cublas|nltk|python|"
+                        r"hugging ?face|silero|onnx|\bvad\b|\bmodels? folder\b|backend|\u2014|\u2013", re.I)
+
+
+def wording_audit(report: Path) -> bool:
+    files = [p for p in (REPO / "extension" / "src" / "ui").rglob("*") if p.suffix in (".ts", ".tsx")] + \
+        [p for p in (HERE / "dist-files").rglob("*") if p.is_file()]
+    hits = []
+    for f in files:
+        for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            code = line.strip()
+            if code.startswith(("//", "*", "/*", "#")) or code.startswith("import "):
+                continue
+            # in source files only string literals and JSX text are user facing
+            text = code if f.suffix not in (".ts", ".tsx") else " ".join(
+                "".join(m) for m in re.findall(r'"([^"]*)"|\'([^\']*)\'|`([^`]*)`|>([^<>{}]+)<', code))
+            # "// stored value, not shown" marks internal values compared in code
+            if TECH_WORDS.search(text) and not re.search(r"backendDir|PlayerDebugMode|// stored value, not shown", code):
+                hits.append(f"{f.relative_to(REPO).as_posix()}:{n}: {code[:140]}")
+    report.write_text("WORDING AUDIT (component names and long dashes in user-facing text)\n" +
+                      ("\n".join(hits) if hits else "No matches.") + "\n", encoding="utf-8")
+    return not hits
+
+
 # ---------------------------------------------------------------- archives
-def zip_dir(src: Path, dest: Path, arc_root: str, store_ext=(".bin", ".pt", ".pth", ".dll", ".pyd", ".exe", ".zip")) -> None:
+def zip_dir(src: Path, dest: Path, arc_root: str, store_ext=(".bin", ".pt", ".pth", ".dll", ".pyd", ".exe", ".zip", ".pak")) -> None:
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
         for p in sorted(src.rglob("*")):
             if p.is_file():
@@ -182,14 +157,12 @@ def verify_zip(path: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--backend", required=True)
+    ap.add_argument("--engine", required=True, help="the built 'AutoCaption Engine' folder")
     ap.add_argument("--out", required=True)
     ap.add_argument("--versions", help="build-versions.json from build_backend.py")
     ap.add_argument("--skip-tests", action="store_true")
-    ap.add_argument("--backend-zip", action="store_true",
-                    help="also write a separate backend.zip (duplicates ~5 GB; the COMPLETE zip already contains backend/)")
     args = ap.parse_args()
-    backend_src = Path(args.backend).resolve()
+    engine_src = Path(args.engine).resolve()
     out = Path(args.out).resolve()
     pkg = out / "AutoCaptionAE"
     if out.exists():
@@ -198,80 +171,75 @@ def main() -> int:
     reports = out / "reports"
     reports.mkdir()
 
+    log("audits")
+    net_ok = network_audit(reports / "network_audit.txt")
+    ph_ok = placeholder_scan(reports / "placeholder_scan.txt")
+    word_ok = wording_audit(reports / "wording_audit.txt")
+    log(f"network audit: {'clean' if net_ok else 'UNEXPECTED REFERENCES'}; placeholder scan: {'clean' if ph_ok else 'MATCHES'}; "
+        f"wording audit: {'clean' if word_ok else 'MATCHES'}")
+    if not (net_ok and ph_ok and word_ok):
+        raise SystemExit("audit failed; see reports/")
+
     ext_dir = REPO / "extension"
     if not args.skip_tests:
         log("extension unit + host tests")
         subprocess.run(["npx", "vitest", "run"], cwd=ext_dir, check=True)
     log("build extension")
     subprocess.run(["node", "build.mjs", str(pkg / "extension")], cwd=ext_dir, check=True)
-    (pkg / "extension" / "LICENSE.txt").write_text((REPO / "LICENSE").read_text())
 
-    log("copy backend")
-    # Hard links save disk on the build machine, but NLTK refuses multiply-linked
-    # data files (CWE-59 hardening), so NLTK data is always copied.
-    link_ok = _same_fs(backend_src, out)
+    log("copy engine")
+    link_ok = _same_fs(engine_src, out)
 
     def copy_fn(src: str, dst: str) -> None:
-        if link_ok and "nltk" not in Path(src).parts:
+        if link_ok:
             os.link(src, dst)
         else:
             shutil.copy2(src, dst)
 
-    shutil.copytree(backend_src, pkg / "backend", copy_function=copy_fn)
+    engine = pkg / "AutoCaption Engine"
+    shutil.copytree(engine_src, engine, copy_function=copy_fn, ignore=shutil.ignore_patterns("manifest.json"))
     for f in (HERE / "dist-files").iterdir():
         if f.is_dir():
             shutil.copytree(f, pkg / f.name)
-        else:
+        elif f.name != "VERSION.txt":
             shutil.copy2(f, pkg / f.name)
-    (pkg / "LICENSES").mkdir()
-    collect_licenses(pkg / "backend", pkg / "LICENSES")
+    shutil.copy2(REPO / "LICENSE", pkg / "License.txt")
 
-    log("manifest (SHA-256 of every backend file)")
-    versions = args.versions or str(backend_src.parent / "build-versions.json")
+    log("manifest (SHA-256 of every engine file)")
+    versions = args.versions or str(engine_src.parent / "build-versions.json")
     v = json.loads(Path(versions).read_text())
     v.pop("packages", None)
     tmpv = out / "versions.json"
     tmpv.write_text(json.dumps(v))
-    # manifest.json is regenerated here, so remove any hard-linked copy first
-    (pkg / "backend" / "manifest.json").unlink(missing_ok=True)
-    subprocess.run([sys.executable, str(HERE / "make_manifest.py"), str(pkg / "backend"), "--versions", str(tmpv), "--platform", "win-x64"], check=True)
+    subprocess.run([sys.executable, str(HERE / "make_manifest.py"), str(engine), "--versions", str(tmpv), "--platform", "win-x64"], check=True)
     tmpv.unlink()
 
-    log("audits")
-    net_ok = network_audit(reports / "network_audit.txt")
-    ph_ok = placeholder_scan(reports / "placeholder_scan.txt")
-    log(f"network audit: {'clean' if net_ok else 'UNEXPECTED REFERENCES'}; placeholder scan: {'clean' if ph_ok else 'MATCHES'}")
-    if not (net_ok and ph_ok):
-        raise SystemExit("audit failed; see reports/")
-
-    log("archives")
-    zip_dir(pkg / "extension", pkg / "extension.zip", "extension")
-    if args.backend_zip:
-        zip_dir(pkg / "backend", out / "backend.zip", "backend")
+    log("checksums")
     sums = {}
     for p in sorted(pkg.rglob("*")):
-        if p.is_file() and p.name != "checksums.txt" and not p.relative_to(pkg).as_posix().startswith("backend/"):
-            sums[p.relative_to(pkg).as_posix()] = sha256(p)
-    sums["backend/manifest.json"] = sha256(pkg / "backend" / "manifest.json")
-    if args.backend_zip:
-        sums["backend.zip (separate download)"] = sha256(out / "backend.zip")
+        rel = p.relative_to(pkg).as_posix()
+        if p.is_file() and p.name != "checksums.txt" and (not rel.startswith("AutoCaption Engine/") or p.parent == engine
+                                                          or rel == "AutoCaption Engine/bin/manifest.json"):
+            sums[rel] = sha256(p)
     (pkg / "checksums.txt").write_text(
-        "SHA-256 checksums. Every file inside backend/ is listed with its SHA-256 in backend/manifest.json.\n\n" +
+        "SHA-256 checksums. Every file inside AutoCaption Engine/bin is listed with its SHA-256 in\n"
+        "AutoCaption Engine/bin/manifest.json; the panel checks them with Settings > Engine > Verify.\n\n" +
         "\n".join(f"{h}  {n}" for n, h in sums.items()) + "\n", encoding="utf-8")
-    complete = out / f"AutoCaptionAE_COMPLETE_v{VERSION}.zip"
+
+    log("archive")
+    complete = out / f"AutoCaptionAE_v{VERSION}_Windows.zip"
     zip_dir(pkg, complete, "AutoCaptionAE")
-    log("verifying archives (CRC of every member)")
-    counts = {p.name: verify_zip(p) for p in (pkg / "extension.zip", out / "backend.zip", complete) if p.exists()}
+    log("verifying archive (CRC of every member)")
+    entries = verify_zip(complete)
     final = {
         "version": VERSION,
         "extensionSize": gb(dir_size(pkg / "extension")),
-        "backendSize": gb(dir_size(pkg / "backend")),
-        "modelSizes": {i.parent.relative_to(pkg / "backend" / "models").as_posix(): gb(dir_size(i.parent))
-                       for i in sorted((pkg / "backend" / "models").glob("**/model_info.json"))},
-        "cudaRuntimeSize": gb(dir_size(pkg / "backend" / "runtime" / "cuda")) if (pkg / "backend" / "runtime" / "cuda").exists() else None,
-        "completeZip": {"path": str(complete), "size": gb(complete.stat().st_size), "bytes": complete.stat().st_size, "sha256": sha256(complete), "entries": counts[complete.name]},
-        "backendZip": {"size": gb((out / "backend.zip").stat().st_size), "sha256": sums["backend.zip (separate download)"]} if args.backend_zip else None,
-        "extensionZip": {"size": gb((pkg / "extension.zip").stat().st_size), "sha256": sums["extension.zip"]},
+        "engineSize": gb(dir_size(engine)),
+        "enginePakSize": gb((engine / "engine.pak").stat().st_size),
+        "engineBinSize": gb(dir_size(engine / "bin")),
+        "gpuRuntimeSize": gb(dir_size(engine / "bin" / "cuda")) if (engine / "bin" / "cuda").exists() else None,
+        "zip": {"path": str(complete), "size": gb(complete.stat().st_size), "bytes": complete.stat().st_size,
+                "sha256": sha256(complete), "entries": entries},
     }
     (reports / "release.json").write_text(json.dumps(final, indent=1))
     print(json.dumps(final, indent=1))

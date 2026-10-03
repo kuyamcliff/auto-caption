@@ -1,26 +1,29 @@
 import { useEffect } from "preact/hooks";
 import { APP_VERSION } from "../../core/defaults";
-import { copyText, ErrorCard, Seg } from "../components/common";
+import { AsyncButton, copyText, ErrorCard, Seg } from "../components/common";
 import { Icon } from "../icons";
 import { getStore, useStore, type AppState } from "../store";
-import { VerifyList } from "./Onboarding";
+import { Credit, VerifyList } from "./Onboarding";
 
 const TABS: { id: AppState["settingsTab"]; label: string }[] = [
-  { id: "general", label: "General" }, { id: "backend", label: "Backend" }, { id: "appearance", label: "Appearance" },
+  { id: "general", label: "General" }, { id: "engine", label: "Engine" }, { id: "appearance", label: "Appearance" },
   { id: "advanced", label: "Advanced" }, { id: "diagnostics", label: "Diagnostics" }, { id: "about", label: "About" },
 ];
+
+const QUALITY_FALLBACK = [{ id: "fast", label: "Fast", description: "Quickest results" }, { id: "accurate", label: "Accurate", description: "Best for difficult audio" }];
 
 function General() {
   const store = getStore();
   const c = useStore((s) => s.config);
   const models = useStore((s) => s.backend.models);
+  const quality = models?.quality?.length ? models.quality : QUALITY_FALLBACK;
   return (
     <div class="stack-lg">
       <div class="field">
-        <label>Default model</label>
-        <Seg label="Default model" value={c.defaultModel} onChange={(v) => store.saveConfig({ defaultModel: v })}
-          options={(models?.whisper ?? [{ id: "base", label: "Base" }, { id: "small", label: "Small" }]).map((m) => ({ value: m.id, label: m.label }))} />
-        <span class="faint small">Base is fastest. Small gives higher transcription quality.</span>
+        <label>Default quality</label>
+        <Seg label="Default quality" value={c.defaultModel} onChange={(v) => store.saveConfig({ defaultModel: v })}
+          options={quality.map((m) => ({ value: m.id, label: m.label, title: m.description }))} />
+        <span class="faint small">Fast gives the quickest results. Accurate takes longer and handles difficult audio better.</span>
       </div>
       <div class="field">
         <label for="dl">Default language</label>
@@ -38,44 +41,53 @@ function General() {
   );
 }
 
-function Backend() {
+function Engine() {
   const store = getStore();
   const c = useStore((s) => s.config);
   const b = useStore((s) => s.backend);
   const v = useStore((s) => s.verify);
-  const label = { unset: "Not set", missing: "Not found", offline: "Offline", starting: "Starting", ready: "Running", error: "Error", incompatible: "Incompatible" }[b.status];
+  const label = { unset: "Not set", missing: "Not found", offline: "Stopped", starting: "Starting", ready: "Running", error: "Needs attention", incompatible: "Wrong version" }[b.status];
   return (
     <div class="stack-lg">
       <div class="field">
-        <label>Backend location</label>
-        <div class="path">{c.backendDir ?? "Not selected"}</div>
+        <label>Engine folder</label>
+        <div class="path" title={c.backendDir ?? ""}>{c.backendDir ?? "Not chosen yet"}</div>
         <div class="row row-wrap">
-          <button class="btn" onClick={() => store.locateAndVerify()}>{Icon.folder({ size: 14 })} Locate Backend</button>
-          {c.backendDir ? <button class="btn btn-ghost" onClick={() => store.f.reveal(c.backendDir!)}>{Icon.external({ size: 14 })} Show in Explorer</button> : null}
+          <AsyncButton icon={Icon.folder({ size: 14 })} disabled={v.running} onClick={() => store.locateAndVerify()}>Choose Engine Folder</AsyncButton>
+          {c.backendDir ? <AsyncButton class="btn btn-ghost" icon={Icon.external({ size: 14 })} onClick={() => store.f.reveal(c.backendDir!)}>Show in Explorer</AsyncButton> : null}
         </div>
       </div>
       <div class="row">
-        <span class="muted grow">Backend status</span>
-        <span class="row" style={{ gap: 6 }}><span class={`dot ${b.status === "ready" ? "ok" : b.status === "starting" ? "busy" : b.status === "offline" ? "" : "err"}`} />{label}{b.version ? ` · ${b.version}` : ""}</span>
+        <span class="muted grow">Status</span>
+        <span class="row" style={{ gap: 6 }}>
+          {b.status === "starting" ? <span class="spinner" /> : <span class={`dot ${b.status === "ready" ? "ok" : b.status === "offline" ? "" : "err"}`} />}
+          {label}{b.version ? ` · ${b.version}` : ""}
+        </span>
       </div>
-      {b.error && b.status !== "ready" ? <ErrorCard error={b.error} onAction={(a) => (a === "locate" ? store.chooseBackend() : a === "verify" ? store.runVerify(true) : store.connect().catch(() => undefined))} /> : null}
+      {b.error && b.status !== "ready" ? (
+        <ErrorCard error={b.error} onAction={(a) => (a === "locate" ? store.locateAndVerify() : a === "verify" ? store.runVerify(true) : store.connect().catch(() => undefined))} />
+      ) : null}
       <div class="row row-wrap">
-        {b.status === "ready" ? <button class="btn" onClick={() => store.stopBackend()}>{Icon.stop({ size: 12 })} Stop backend</button>
-          : <button class="btn" disabled={!c.backendDir || b.status === "starting"} onClick={() => store.connect().catch(() => undefined)}>{Icon.play({ size: 12 })} Start backend</button>}
+        {b.status === "ready"
+          ? <AsyncButton icon={Icon.stop({ size: 12 })} onClick={() => store.stopBackend()}>Stop Engine</AsyncButton>
+          : <AsyncButton icon={Icon.play({ size: 12 })} busyText="Starting…" disabled={!c.backendDir || b.status === "starting"} onClick={() => store.connect().catch(() => undefined)}>Start Engine</AsyncButton>}
+        <span class="faint small">The engine starts by itself when you transcribe, and stops after 10 idle minutes.</span>
       </div>
       <div class="divider" />
       <div class="row">
         <div class="grow">
-          <div class="card-title">Verify installation</div>
-          <div class="faint small">Runs a real test transcription, checks every model with SHA‑256 and tests the GPU.</div>
+          <div class="card-title">Check engine</div>
+          <div class="faint small">Runs a real test transcription, checks every engine file and tests graphics acceleration.</div>
         </div>
-        <button class="btn btn-primary" disabled={v.running || !c.backendDir} onClick={() => store.runVerify(false)}>{v.running ? "Verifying…" : "Verify"}</button>
+        <button type="button" class="btn btn-primary" aria-busy={v.running} disabled={!c.backendDir} onClick={() => { if (!v.running) store.runVerify(false); }}>
+          {v.running ? <><span class="spinner" aria-hidden="true" /> Checking…</> : "Check"}
+        </button>
       </div>
       {v.rows.length || v.running ? <VerifyList showDetails /> : null}
       {v.ok === true && !v.running ? <div class="row" style={{ color: "var(--ok)" }}>{Icon.check()} Everything is ready.</div> : null}
       {v.ok === false && !v.running ? (
-        <div class="notice err"><span class="ico">{Icon.alert()}</span><div><div class="notice-title">Repair instructions</div>
-          <div class="muted">Delete the backend folder and copy a fresh “backend” folder from the AutoCaption download, then click Locate Backend. Nothing needs to be downloaded separately.</div></div></div>
+        <div class="notice err"><span class="ico">{Icon.alert()}</span><div><div class="notice-title">How to repair</div>
+          <div class="muted">Delete the AutoCaption Engine folder, copy a fresh one from the download, then click Choose Engine Folder. Nothing needs to be downloaded separately.</div></div></div>
       ) : null}
     </div>
   );
@@ -87,8 +99,8 @@ function Appearance() {
   return (
     <div class="stack-lg">
       <div class="field">
-        <label>UI scale</label>
-        <Seg label="UI scale" value={c.uiScale} onChange={(v) => store.saveConfig({ uiScale: v })}
+        <label>Panel scale</label>
+        <Seg label="Panel scale" value={c.uiScale} onChange={(v) => store.saveConfig({ uiScale: v })}
           options={[{ value: 0.9, label: "90%" }, { value: 1, label: "100%" }, { value: 1.1, label: "110%" }, { value: 1.25, label: "125%" }]} />
       </div>
       <div class="field">
@@ -106,10 +118,10 @@ function Advanced() {
   return (
     <div class="stack-lg">
       <div class="field">
-        <label>Compute device</label>
-        <Seg label="Compute device" value={c.device} onChange={(v) => store.saveConfig({ device: v })}
-          options={[{ value: "auto", label: "Auto" }, { value: "cpu", label: "CPU" }, { value: "cuda", label: "GPU" }]} />
-        <span class="faint small">Auto uses a compatible NVIDIA GPU when available and falls back to the CPU.</span>
+        <label>Processing</label>
+        <Seg label="Processing" value={c.device} onChange={(v) => store.saveConfig({ device: v })}
+          options={[{ value: "auto", label: "Automatic" }, { value: "gpu", label: "Graphics card" }, { value: "cpu", label: "Processor" }]} />
+        <span class="faint small">Automatic uses a supported NVIDIA graphics card when there is one, and your processor otherwise.</span>
       </div>
       <div class="field">
         <label for="bs">Batch size</label>
@@ -117,14 +129,14 @@ function Advanced() {
           <option value="0">Automatic</option>
           {[2, 4, 8, 16, 24].map((n) => <option value={String(n)} key={n}>{n}</option>)}
         </select>
-        <span class="faint small">Lower values use less memory; higher values can be faster on a GPU.</span>
+        <span class="faint small">Lower values use less memory. Higher values can be faster on a graphics card.</span>
       </div>
       <div class="field">
-        <label>Voice activity detection</label>
-        <Seg label="VAD mode" value={c.vad} onChange={(v) => store.saveConfig({ vad: v })} options={[{ value: "pyannote", label: "On (recommended)" }, { value: "off", label: "Off" }]} />
-        <span class="faint small">Skips silence and music before transcribing. Turn off only if speech is being missed.</span>
+        <label>Skip silence</label>
+        <Seg label="Skip silence" value={c.vad} onChange={(v) => store.saveConfig({ vad: v })} options={[{ value: "on", label: "On (recommended)" }, { value: "off", label: "Off" }]} />
+        <span class="faint small">Skips silence and music before transcribing. Turn it off only if speech is being missed.</span>
       </div>
-      <label class="check"><input type="checkbox" checked={c.debug} onChange={(e) => store.saveConfig({ debug: (e.target as HTMLInputElement).checked })} /> Debug logging</label>
+      <label class="check"><input type="checkbox" checked={c.debug} onChange={(e) => store.saveConfig({ debug: (e.target as HTMLInputElement).checked })} /> Detailed logging</label>
     </div>
   );
 }
@@ -133,24 +145,18 @@ function Diagnostics() {
   const store = getStore();
   const d = useStore((s) => s.diagnostics);
   useEffect(() => { store.loadDiagnostics(); }, []);
-  const gpu = d?.gpu as { cudaDevices?: number; name?: string } | undefined;
+  const gpu = d?.gpu as { available?: boolean; name?: string; memory?: string | number } | undefined;
+  const none = "Unknown";
   const rows: [string, string][] = d ? [
-    ["Extension version", String(d.extensionVersion ?? APP_VERSION)],
-    ["Backend version", String(d.backendVersion ?? "—")],
-    ["After Effects", String(d.afterEffects ?? "—")],
-    ["WhisperX", String(d.whisperx ?? "—")],
-    ["faster-whisper", String(d.fasterWhisper ?? "—")],
-    ["CTranslate2", String(d.ctranslate2 ?? "—")],
-    ["PyTorch", String(d.torch ?? "—")],
-    ["Models", d.models ? Object.entries(d.models as Record<string, string>).map(([k, v]) => `${k} (${String(v).slice(0, 8)})`).join(", ") : "—"],
-    ["Alignment", d.alignmentModels ? Object.keys(d.alignmentModels as object).join(", ") : "—"],
-    ["FFmpeg", String(d.ffmpeg ?? "—")],
-    ["GPU", gpu ? (gpu.cudaDevices ? `${gpu.name ?? "NVIDIA GPU"} (CUDA)` : "None detected — CPU is used") : "—"],
-    ["CPU", `${d.cpu ?? "—"}${d.cpuCores ? ` · ${d.cpuCores} threads` : ""}`],
-    ["RAM", d.ramGB ? `${d.ramGB} GB` : "—"],
-    ["Free temp space", d.tempFreeGB ? `${d.tempFreeGB} GB` : "—"],
-    ["Operating system", String(d.os ?? "—")],
-    ["Engine", d.engineRunning ? "Models loaded" : "Idle"],
+    ["Panel version", String(d.extensionVersion ?? APP_VERSION)],
+    ["Engine version", String(d.engineVersion ?? none)],
+    ["After Effects", String(d.afterEffects ?? none)],
+    ["Graphics", gpu ? (gpu.available ? `${gpu.name ?? "NVIDIA graphics card"}${gpu.memory ? ` (${gpu.memory})` : ""}` : "No supported graphics card. The processor is used.") : none],
+    ["Processor", `${d.cpu ?? none}${d.cpuCores ? ` · ${d.cpuCores} threads` : ""}`],
+    ["Memory", d.ramGB ? `${d.ramGB} GB` : none],
+    ["Free temp space", d.tempFreeGB ? `${d.tempFreeGB} GB` : none],
+    ["Operating system", String(d.os ?? none)],
+    ["Engine", d.engineStatus ? String(d.engineStatus) : d.engineRunning ? "Running, ready to transcribe" : "Running, idle"],
   ] : [];
   return (
     <div class="stack-lg">
@@ -158,33 +164,39 @@ function Diagnostics() {
         <dl class="kv">{rows.map(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`}>{v}</dd>])}</dl>
       )}
       <div class="row row-wrap">
-        <button class="btn" disabled={!d} onClick={() => { const ok = copyText(rows.map(([k, v]) => `${k}: ${v}`).join("\n")); store.toast(ok ? "ok" : "err", ok ? "Diagnostics copied" : "Could not copy"); }}>{Icon.copy({ size: 14 })} Copy diagnostics</button>
-        <button class="btn" onClick={() => store.f.reveal(store.logsDir())}>{Icon.folder({ size: 14 })} Open logs</button>
-        <button class="btn" onClick={() => { store.stopBackend(); store.toast("ok", "Backend stopped. It starts again when needed."); }}>{Icon.stop({ size: 12 })} Stop backend</button>
+        <AsyncButton icon={Icon.copy({ size: 14 })} disabled={!d} onClick={() => {
+          const ok = copyText(rows.map(([k, v]) => `${k}: ${v}`).join("\n"));
+          store.toast(ok ? "ok" : "err", ok ? "Diagnostics copied" : "Could not copy");
+        }}>Copy diagnostics</AsyncButton>
+        <AsyncButton icon={Icon.folder({ size: 14 })} onClick={() => store.f.reveal(store.logsDir())}>Open logs</AsyncButton>
+        <AsyncButton icon={Icon.refresh({ size: 14 })} onClick={() => store.loadDiagnostics()}>Refresh</AsyncButton>
+        <AsyncButton icon={Icon.stop({ size: 12 })} onClick={async () => { await store.stopBackend(); store.toast("ok", "Engine stopped. It starts again when needed."); }}>Stop Engine</AsyncButton>
       </div>
-      <div class="faint small">Diagnostics never include your audio, transcripts or the session token.</div>
+      <div class="faint small">Diagnostics never include your audio or transcripts.</div>
     </div>
   );
 }
 
 function About() {
   const store = getStore();
+  const dir = useStore((s) => s.config.backendDir);
   return (
     <div class="stack-lg">
       <div class="row" style={{ gap: 12 }}>
         <div class="hero-mark">{Icon.logo({ size: 24 })}</div>
         <div>
           <div class="h1" style={{ fontSize: 16 }}>AutoCaption AE</div>
-          <div class="muted">Version {APP_VERSION}</div>
+          <div class="muted">Version {APP_VERSION} · Made by <b>cyriqvfx</b></div>
         </div>
       </div>
-      <p class="muted" style={{ margin: 0 }}>Offline automatic captions for After Effects.</p>
-      <div class="muted small">Powered by WhisperX and faster-whisper. Word timing comes from forced alignment.</div>
+      <p class="muted" style={{ margin: 0 }}>Automatic captions for After Effects with word‑accurate timing. Everything runs on this computer.</p>
       <div class="privacy">{Icon.shield()}<span>Your audio stays on this computer. AutoCaption AE does not upload your media, and has no telemetry or analytics.</span></div>
       <div class="row row-wrap">
-        <button class="btn" disabled={!store.state.config.backendDir} onClick={() => store.f.reveal(store.f.join(store.state.config.backendDir!, "licenses"))}>{Icon.external({ size: 14 })} Licenses</button>
-        <button class="btn" onClick={() => store.set({ settingsTab: "diagnostics" })}>Diagnostics</button>
+        <AsyncButton icon={Icon.external({ size: 14 })} disabled={!dir} title={dir ? undefined : "Choose the engine folder first"}
+          onClick={() => store.f.reveal(store.f.join(dir!, "Third-party notices.txt"))}>Third-party notices</AsyncButton>
+        <button type="button" class="btn" onClick={() => store.set({ settingsTab: "diagnostics" })}>Diagnostics</button>
       </div>
+      <Credit />
     </div>
   );
 }
@@ -196,13 +208,13 @@ export function Settings() {
     <>
       <div class="tabs" role="tablist" aria-label="Settings">
         {TABS.map((t) => (
-          <button class="tab" role="tab" key={t.id} aria-selected={tab === t.id} onClick={() => store.set({ settingsTab: t.id })}>{t.label}</button>
+          <button type="button" class="tab" role="tab" key={t.id} aria-selected={tab === t.id} onClick={() => store.set({ settingsTab: t.id })}>{t.label}</button>
         ))}
       </div>
       <div class="scroll">
         <div class="page" style={{ maxWidth: 560 }}>
           <div class="card card-pad" role="tabpanel">
-            {tab === "general" ? <General /> : tab === "backend" ? <Backend /> : tab === "appearance" ? <Appearance /> : tab === "advanced" ? <Advanced /> : tab === "diagnostics" ? <Diagnostics /> : <About />}
+            {tab === "general" ? <General /> : tab === "engine" ? <Engine /> : tab === "appearance" ? <Appearance /> : tab === "advanced" ? <Advanced /> : tab === "diagnostics" ? <Diagnostics /> : <About />}
           </div>
         </div>
       </div>

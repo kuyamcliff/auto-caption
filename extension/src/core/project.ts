@@ -28,7 +28,7 @@ export function projectFromResult(
   return {
     schemaVersion: 1,
     app: { name: "AutoCaption AE", version: APP_VERSION },
-    project: { id: newProjectId(), name: opts.name || `${source.composition} – ${source.layers.map((l) => l.name).join(", ")}`, createdAt: now, updatedAt: now },
+    project: { id: newProjectId(), name: opts.name || `${source.composition} · ${source.layers.map((l) => l.name).join(", ")}`, createdAt: now, updatedAt: now },
     source,
     transcription: {
       language: result.language, languageProbability: result.languageProbability ?? null, noSpaces: !!result.noSpaces,

@@ -23,9 +23,10 @@ export interface Config {
   wordsPerLine: number;
   uiScale: number;
   theme: "auto" | "dark" | "light";
-  device: "auto" | "cpu" | "cuda";
+  device: "auto" | "cpu" | "gpu";
   batchSize: number;
-  vad: "pyannote" | "off";
+  /** skip silence before transcribing */
+  vad: "on" | "off";
   debug: boolean;
   onboarded: boolean;
   privacyAck: boolean;
@@ -34,9 +35,25 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  version: 1, backendDir: null, defaultModel: "base", defaultLanguage: "auto", wordsPerLine: 4, uiScale: 1,
-  theme: "auto", device: "auto", batchSize: 0, vad: "pyannote", debug: false, onboarded: false, privacyAck: false,
+  version: 1, backendDir: null, defaultModel: "fast", defaultLanguage: "auto", wordsPerLine: 4, uiScale: 1,
+  theme: "auto", device: "auto", batchSize: 0, vad: "on", debug: false, onboarded: false, privacyAck: false,
 };
+
+/** Settings written by earlier builds use other value names. */
+function migrateConfig(c: Config): Config {
+  const model = ({ base: "fast", small: "accurate" } as Record<string, string>)[c.defaultModel] ?? c.defaultModel;
+  const device = (c.device as string) === "cuda" ? "gpu" : c.device; // stored value, not shown
+  const vad = (c.vad as string) === "pyannote" ? "on" : c.vad; // stored value, not shown
+  return { ...c, defaultModel: model === "fast" || model === "accurate" ? model : "fast", device, vad };
+}
+
+/** How a project's quality level is shown ("Fast", "Accurate", "Imported"). */
+export function qualityLabel(model: string): string {
+  if (model === "import") return "Imported";
+  if (model === "fast" || model === "base") return "Fast";
+  if (model === "accurate" || model === "small") return "Accurate";
+  return "Custom";
+}
 
 export type BackendStatus = "unset" | "missing" | "offline" | "starting" | "ready" | "error" | "incompatible";
 
@@ -63,7 +80,7 @@ export interface Toast {
   id: number;
   kind: "ok" | "warn" | "err" | "info";
   text: string;
-  action?: { label: string; run: () => void };
+  action?: { label: string; run: () => unknown };
 }
 
 export interface DialogAction {
@@ -91,7 +108,7 @@ export interface RecentEntry {
 export interface AppState {
   ready: boolean;
   screen: "main" | "onboarding" | "settings" | "help";
-  settingsTab: "general" | "backend" | "appearance" | "advanced" | "diagnostics" | "about";
+  settingsTab: "general" | "engine" | "appearance" | "advanced" | "diagnostics" | "about";
   config: Config;
   backend: { status: BackendStatus; version?: string; error?: FriendlyError; models?: ModelsInfo; manifest?: Record<string, unknown> };
   verify: { running: boolean; rows: SelfTestRow[]; ok?: boolean; error?: FriendlyError; finishedAt?: number };
@@ -167,7 +184,7 @@ export class Store {
   }
 
   log(level: "info" | "warn" | "error", msg: string) {
-    if (level === "info" && !this.state.config.debug && !/^(start|backend|job|create|export|import)/.test(msg)) return;
+    if (level === "info" && !this.state.config.debug && !/^(start|engine|job|create|export|import)/.test(msg)) return;
     this.logQueue.push(`${new Date().toISOString()} ${level.toUpperCase()} ${msg}`);
     if (this.logQueue.length === 1) setTimeout(() => this.flushLog(), 500);
   }
@@ -222,6 +239,12 @@ export class Store {
       this.set({ dialog: d });
     });
   }
+  /** Friendly error for the screen; the raw detail goes to the log only. */
+  fe(raw: { code: string; message: string; detail?: string; hint?: string[] }): FriendlyError {
+    if (raw.detail) this.log("error", `${raw.code}: ${raw.message}\n${raw.detail}`);
+    return friendlyError(raw);
+  }
+
   setDialogInput(value: string) {
     const d = this.state.dialog;
     if (d?.input) this.set({ dialog: { ...d, input: { ...d.input, value } } });
@@ -233,7 +256,7 @@ export class Store {
     let config = { ...DEFAULT_CONFIG };
     if (raw) {
       try {
-        config = { ...DEFAULT_CONFIG, ...JSON.parse(raw), version: 1 };
+        config = migrateConfig({ ...DEFAULT_CONFIG, ...JSON.parse(raw), version: 1 });
       } catch {
         this.toast("warn", "Settings file was unreadable and has been reset.");
       }
@@ -252,7 +275,7 @@ export class Store {
       this.startPromise = null;
       if (this.state.backend.status === "ready") {
         this.set({ backend: { ...this.state.backend, status: "offline" } });
-        this.log("warn", `backend exited (${code})`);
+        this.log("warn", `engine exited (${code})`);
       }
     });
     this.platform.host.getFonts().then((r) => {
@@ -301,13 +324,13 @@ export class Store {
     const dir = this.state.config.backendDir;
     if (!dir) {
       this.set({ backend: { status: "unset" } });
-      return Promise.reject(new BackendError("BACKEND_UNSET", "Choose the backend folder first."));
+      return Promise.reject(new BackendError("ENGINE_UNSET", "Choose the engine folder first."));
     }
     this.set({ backend: { ...this.state.backend, status: "starting", error: undefined } });
     this.startPromise = (async () => {
       if (!(await this.platform.backend.executable(dir))) {
-        this.set({ backend: { status: "missing", error: friendlyError({ code: "BACKEND_MISSING", message: "" }) } });
-        throw new BackendError("BACKEND_MISSING", "Backend not found.");
+        this.set({ backend: { status: "missing", error: friendlyError({ code: "ENGINE_MISSING", message: "" }) } });
+        throw new BackendError("ENGINE_MISSING", "Engine not found.");
       }
       try {
         const info = await this.platform.backend.start(dir);
@@ -316,25 +339,26 @@ export class Store {
         const [models, manifest] = await Promise.all([client.models(), client.manifest()]);
         const compat = await client.verify(this.platform.extensionVersion).catch(() => null);
         if (compat && !compat.verify.compatibility.compatible) {
-          this.set({ backend: { status: "incompatible", version: health.version, error: friendlyError({ code: "INCOMPATIBLE", message: `Backend ${health.version} needs extension ${compat.verify.compatibility.min}–${compat.verify.compatibility.max}.` }) } });
+          this.set({ backend: { status: "incompatible", version: health.version, error: friendlyError({ code: "INCOMPATIBLE", message: `Engine ${health.version} works with panel versions ${compat.verify.compatibility.min} to ${compat.verify.compatibility.max}.` }) } });
           await this.platform.backend.stop();
-          throw new BackendError("INCOMPATIBLE", "Incompatible backend.");
+          throw new BackendError("INCOMPATIBLE", "This engine does not match the panel version.");
         }
         this.client = client;
         this.startKeepalive();
         this.set({ backend: { status: "ready", version: health.version, models, manifest: manifest.manifest } });
         if (health.orphansCleaned) this.toast("info", "Cleaned up temporary files from an unfinished job.");
-        this.log("info", `backend ready ${health.version} on port ${info.port}`);
+        this.log("info", `engine ready ${health.version} on port ${info.port}`);
         if (compat && !compat.verify.ok) {
-          this.set({ backend: { ...this.state.backend, status: "error", error: friendlyError({ code: "BACKEND_DAMAGED", message: "", detail: [...compat.verify.missing, ...compat.verify.corrupt].join("\n") }) } });
+          this.log("error", `engine files damaged or missing:\n${[...compat.verify.missing, ...compat.verify.corrupt].join("\n")}`);
+          this.set({ backend: { ...this.state.backend, status: "error", error: friendlyError({ code: "ENGINE_DAMAGED", message: `${compat.verify.missingCount + compat.verify.corruptCount} engine files are damaged or missing.` }) } });
         }
         return client;
       } catch (e) {
         const err = e as BackendError & { detail?: string };
         if (this.state.backend.status === "starting") {
-          this.set({ backend: { status: "error", error: friendlyError({ code: err.code || "BACKEND_START", message: err.message, detail: err.detail }) } });
+          this.set({ backend: { status: "error", error: this.fe({ code: err.code || "ENGINE_START", message: err.message, detail: err.detail }) } });
         }
-        this.log("error", `backend start failed: ${err.code} ${err.message}`);
+        this.log("error", `engine start failed: ${err.code} ${err.message}`);
         throw e;
       } finally {
         this.startPromise = null;
@@ -344,7 +368,7 @@ export class Store {
   }
 
   private keepalive: number | null = null;
-  /** The backend exits after 10 idle minutes; ping while the panel is open. */
+  /** The engine exits after 10 idle minutes; ping while the panel is open. */
   private startKeepalive() {
     if (this.keepalive) clearInterval(this.keepalive);
     this.keepalive = window.setInterval(() => {
@@ -370,16 +394,16 @@ export class Store {
   }
 
   async chooseBackend(): Promise<boolean> {
-    const dir = await this.f.chooseFolder("Choose the AutoCaption “backend” folder", this.state.config.backendDir ?? undefined);
+    const dir = await this.f.chooseFolder("Choose the AutoCaption Engine folder", this.state.config.backendDir ?? undefined);
     if (!dir) return false;
-    // Accept the package root too: use its backend/ subfolder.
+    // Accept the download's top folder too: use its "AutoCaption Engine" subfolder.
     let chosen = dir;
     if (!(await this.platform.backend.executable(dir))) {
-      const sub = this.f.join(dir, "backend");
+      const sub = this.f.join(dir, "AutoCaption Engine");
       if (await this.platform.backend.executable(sub)) chosen = sub;
     }
     if (!(await this.platform.backend.executable(chosen))) {
-      this.toast("err", "That folder does not contain AutoCaptionBackend.exe. Choose the “backend” folder from the download.");
+      this.toast("err", "That is not the engine folder. Choose the “AutoCaption Engine” folder from the download.", undefined, 7000);
       return false;
     }
     await this.stopBackend();
@@ -408,11 +432,11 @@ export class Store {
         this.set({ verify: { running: true, rows: [...rows.values()] } });
       }, quick);
       this.set({ verify: { running: false, rows: [...rows.values()], ok: res.ok, finishedAt: Date.now() } });
-      this.log(res.ok ? "info" : "warn", `backend verify ${res.ok ? "passed" : "failed: " + res.failed.join(",")}`);
+      this.log(res.ok ? "info" : "warn", `engine check ${res.ok ? "passed" : "failed: " + res.failed.join(",")}`);
       if (res.ok && this.state.backend.status !== "ready") this.connect().catch(() => undefined);
     } catch (e) {
       const err = e as Error & { code?: string; detail?: string };
-      this.set({ verify: { running: false, rows: [...rows.values()], ok: false, error: friendlyError({ code: err.code || "SELFTEST_FAILED", message: err.message, detail: err.detail }) } });
+      this.set({ verify: { running: false, rows: [...rows.values()], ok: false, error: this.fe({ code: err.code || "SELFTEST_FAILED", message: err.message, detail: err.detail }) } });
     }
   }
 
@@ -421,10 +445,10 @@ export class Store {
       const c = await this.connect();
       const d = await c.diagnostics();
       const info = await this.platform.host.info();
-      this.set({ diagnostics: { ...d.diagnostics, extensionVersion: APP_VERSION, afterEffects: info.ok ? `${info.aeVersion} ${info.build}` : "unknown" } });
+      this.set({ diagnostics: { ...d.diagnostics, extensionVersion: APP_VERSION, afterEffects: info.ok ? `${info.aeVersion} ${info.build}`.trim() : "Unknown" } });
     } catch {
       const info = await this.platform.host.info();
-      this.set({ diagnostics: { extensionVersion: APP_VERSION, afterEffects: info.ok ? info.aeVersion : "unknown", backend: "not running" } });
+      this.set({ diagnostics: { extensionVersion: APP_VERSION, afterEffects: info.ok ? info.aeVersion : "Unknown", engineStatus: "Not running" } });
     }
   }
 
@@ -479,7 +503,7 @@ export class Store {
       client = await this.connect();
     } catch (e) {
       const err = e as BackendError & { detail?: string };
-      this.set({ job: { phase: "failed", kind: "transcribe", error: friendlyError({ code: err.code || "BACKEND_START", message: err.message, detail: err.detail }) } });
+      this.set({ job: { phase: "failed", kind: "transcribe", error: this.fe({ code: err.code || "ENGINE_START", message: err.message, detail: err.detail }) } });
       return;
     }
     const span = Math.max(...layers.map((l) => Math.max(l.inPoint, l.outPoint))) - Math.min(...layers.map((l) => Math.min(l.inPoint, l.outPoint)));
@@ -511,8 +535,7 @@ export class Store {
       const L = layers[0];
       const simple = layers.length === 1 && L.sourcePath && !L.footageMissing && !L.timeRemap && L.stretch > 0 && L.type !== "precomp";
       if (!simple) {
-        this.set({ job: { phase: "failed", kind: "transcribe", error: friendlyError({ code: rendered.code, message: rendered.message, detail: rendered.detail }) } });
-        this.log("error", `render failed ${rendered.code}: ${rendered.detail ?? ""}`);
+        this.set({ job: { phase: "failed", kind: "transcribe", error: this.fe({ code: rendered.code, message: rendered.message, detail: rendered.detail }) } });
         return;
       }
       const k = L.stretch / 100;
@@ -522,7 +545,7 @@ export class Store {
       const dur = (outP - inP) / k;
       // stretch != 100% cannot be represented as a pure offset; refuse rather than mistime
       if (Math.abs(k - 1) > 1e-6) {
-        this.set({ job: { phase: "failed", kind: "transcribe", error: friendlyError({ code: rendered.code, message: rendered.message, detail: rendered.detail }) } });
+        this.set({ job: { phase: "failed", kind: "transcribe", error: this.fe({ code: rendered.code, message: rendered.message, detail: rendered.detail }) } });
         return;
       }
       source = { ...baseSource, audioOffset: inP, audioDuration: dur, mapping: "render" };
@@ -551,7 +574,7 @@ export class Store {
       if (err.code === "BUSY") {
         this.set({ job: { phase: "failed", kind: "transcribe", error: friendlyError({ code: "BUSY", message: err.message }) } });
       } else {
-        this.set({ job: { phase: "failed", kind: "transcribe", error: friendlyError({ code: err.code || "ENGINE_ERROR", message: err.message, detail: (err as BackendError).detail }) } });
+        this.set({ job: { phase: "failed", kind: "transcribe", error: this.fe({ code: err.code || "ENGINE_ERROR", message: err.message, detail: err.detail }) } });
       }
       await this.f.remove(renderDir);
     }
@@ -791,7 +814,7 @@ export class Store {
       const r = await this.platform.host.renderAudio(sel.comp.id, layers.map((l) => l.index), renderDir);
       if (!r.ok) {
         await this.f.remove(renderDir);
-        this.set({ job: { phase: "failed", kind: "align", error: friendlyError({ code: r.code, message: r.message, detail: r.detail }) } });
+        this.set({ job: { phase: "failed", kind: "align", error: this.fe({ code: r.code, message: r.message, detail: r.detail }) } });
         return;
       }
       const segments = E.views(p).map((v) => ({ start: Math.max(0, v.start - r.audioOffset), end: Math.max(0.05, v.end - r.audioOffset), text: v.text }))
@@ -813,10 +836,10 @@ export class Store {
       this.history.push(p, "Align to audio");
       this.set({ project: aligned, canUndo: true, canRedo: false, job: { phase: "done", kind: "align", snapshot: final } });
       this.scheduleSave();
-      this.toast("ok", "Word timing aligned to the audio.");
+      this.toast("ok", "Word timing matched to the audio.");
     } catch (e) {
       const err = e as BackendError;
-      this.set({ job: { phase: "failed", kind: "align", error: friendlyError({ code: err.code || "ENGINE_ERROR", message: err.message }) } });
+      this.set({ job: { phase: "failed", kind: "align", error: this.fe({ code: err.code || "ENGINE_ERROR", message: err.message, detail: err.detail }) } });
     }
   }
 

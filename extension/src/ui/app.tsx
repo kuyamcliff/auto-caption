@@ -6,22 +6,29 @@ import { Onboarding } from "./screens/Onboarding";
 import { Settings } from "./screens/Settings";
 import { getStore, useStore } from "./store";
 
-function BackendPill() {
+function EnginePill() {
   const store = getStore();
   const b = useStore((s) => s.backend.status);
   const job = useStore((s) => s.job.phase);
   const working = job === "extracting" || job === "running";
   const [dot, label] = working ? ["busy", "Working"] : b === "ready" ? ["ok", "Ready"] : b === "starting" ? ["busy", "Starting"]
-    : b === "offline" || b === "unset" ? ["", "Offline"] : b === "missing" ? ["err", "Not found"] : ["err", "Error"];
+    : b === "offline" || b === "unset" ? ["", "Stopped"] : b === "missing" ? ["err", "Not found"] : ["err", "Needs attention"];
+  const openEngine = () => store.set({ screen: "settings", settingsTab: "engine" });
   const items = b === "ready"
-    ? [{ label: "Backend: Running", heading: true }, { label: "Verify installation", icon: Icon.check({ size: 14 }), run: () => { store.set({ screen: "settings", settingsTab: "backend" }); store.runVerify(false); } }, { label: "Stop backend", icon: Icon.stop({ size: 12 }), run: () => store.stopBackend() }]
+    ? [{ label: "Engine is running", heading: true },
+      { label: "Check engine", icon: Icon.check({ size: 14 }), run: () => { openEngine(); return store.runVerify(false); } },
+      { label: "Stop engine", icon: Icon.stop({ size: 12 }), run: () => store.stopBackend() }]
     : b === "error" || b === "incompatible"
-      ? [{ label: "Backend: Error", heading: true }, { label: "Verify", icon: Icon.check({ size: 14 }), run: () => { store.set({ screen: "settings", settingsTab: "backend" }); store.runVerify(true); } }, { label: "Repair instructions", icon: Icon.help({ size: 14 }), run: () => store.set({ screen: "settings", settingsTab: "backend" }) }]
-      : [{ label: `Backend: ${label}`, heading: true }, { label: "Start Backend", icon: Icon.play({ size: 12 }), run: () => store.connect().catch(() => undefined), disabled: b === "starting" }, { label: "Locate Backend", icon: Icon.folder({ size: 14 }), run: () => store.locateAndVerify() }];
+      ? [{ label: "Engine needs attention", heading: true },
+        { label: "Check engine", icon: Icon.check({ size: 14 }), run: () => { openEngine(); return store.runVerify(true); } },
+        { label: "How to repair", icon: Icon.help({ size: 14 }), run: openEngine }]
+      : [{ label: b === "missing" ? "Engine not found" : b === "starting" ? "Engine is starting" : "Engine is stopped", heading: true },
+        { label: "Start engine", icon: Icon.play({ size: 12 }), run: () => store.connect().catch(() => undefined), disabled: b === "starting" || b === "missing" || b === "unset" },
+        { label: "Choose Engine Folder", icon: Icon.folder({ size: 14 }), run: () => store.locateAndVerify() }];
   return (
-    <MenuButton right items={items} button={(open, toggle) => (
-      <button class="pill" aria-expanded={open} aria-label={`Engine status: ${label}`} onClick={toggle}>
-        <span class={`dot ${dot}`} />{label}
+    <MenuButton right items={items} button={(open, toggle, busy) => (
+      <button type="button" class="pill" aria-expanded={open} aria-busy={busy} aria-label={`Engine status: ${label}`} onClick={toggle}>
+        {busy || b === "starting" ? <span class="spinner" aria-hidden="true" /> : <span class={`dot ${dot}`} />}{label}
       </button>
     )} />
   );
@@ -45,7 +52,7 @@ export function App() {
         )}
         {sub ? <span class="card-title">{screen === "settings" ? "Settings" : "Help"}</span> : null}
         <span class="spacer" />
-        {screen !== "onboarding" ? <BackendPill /> : null}
+        {screen !== "onboarding" ? <EnginePill /> : null}
         <button class="btn btn-ghost icon-btn" aria-label="Help" title="Help" aria-pressed={screen === "help"} onClick={() => store.set({ screen: screen === "help" ? "main" : "help" })}>{Icon.help()}</button>
         <button class="btn btn-ghost icon-btn" aria-label="Settings" title="Settings" aria-pressed={screen === "settings"} onClick={() => store.set({ screen: screen === "settings" ? (store.state.config.onboarded ? "main" : "onboarding") : "settings" })}>{Icon.gear()}</button>
       </header>

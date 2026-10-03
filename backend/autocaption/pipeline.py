@@ -214,8 +214,7 @@ class Engine:
         except Exception as exc:  # noqa: BLE001
             log.exception("alignment model failed to load")
             warnings.append({"code": "ALIGN_LOAD_FAILED",
-                             "message": "Precise word timing could not start, so word timing is estimated.",
-                             "detail": str(exc)[:500]})
+                             "message": "Precise word timing could not start, so word timing is estimated."})
         aligned = aligner is not None
 
         batch = opts.batch_size or (16 if device == "cuda" else 8)

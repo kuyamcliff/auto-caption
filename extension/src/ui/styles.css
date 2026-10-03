@@ -369,3 +369,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 16px; cu
   .cap { grid-template-columns: 62px 1fr auto; gap: 6px; }
   .page { padding: 8px; }
 }
+
+/* busy buttons: spinner takes the icon's place, label stays, button keeps its colour */
+.btn .spinner { width: 12px; height: 12px; border-color: currentColor; border-top-color: transparent; opacity: 0.85; flex: none; }
+.btn[aria-busy="true"] { cursor: progress; }
+.btn[aria-busy="true"]:active { transform: none; }
+.sm-btn { height: 22px; padding: 0 6px; font-size: 11px; margin-top: 6px; }
+.details .sm-btn { margin-left: -6px; }
+.credit { font-size: 11px; color: var(--text-3); text-align: center; letter-spacing: 0.01em; }
+.credit b { color: var(--text-2); font-weight: 600; }
+.pill .spinner { width: 9px; height: 9px; border-width: 1.5px; }

@@ -48,16 +48,22 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => { if (m.type() === "error" && !/favicon|404/.test(m.text())) errors.push(m.text()); });
 const rpc = (fn, args) => page.evaluate(([f, a]) => window.__harnessRpc(f, a), [fn, args]);
+// the Export menu stays locked while its previous action's spinner is up
+const openExport = async () => {
+  await page.waitForFunction(() => [...document.querySelectorAll(".actionbar .btn")].every((b) => b.getAttribute("aria-busy") !== "true"));
+  await page.getByRole("button", { name: "Export" }).click();
+};
 const shot = (name) => page.screenshot({ path: join(shots, `${name}.png`) });
 
 try {
   await page.goto("http://127.0.0.1:4877/");
-  await page.getByText("Let’s connect the local caption engine", { exact: false }).waitFor();
+  await page.getByText("Point AutoCaption to its engine", { exact: false }).waitFor();
   await shot("01-welcome");
   check("first run shows onboarding", true);
 
-  await page.getByRole("button", { name: "Choose Backend Folder" }).click();
-  await page.getByText("Verifying…", { exact: false }).first().waitFor({ timeout: 20000 });
+  check("onboarding shows the credit", (await page.getByText("Made by").count()) > 0);
+  await page.getByRole("button", { name: "Choose Engine Folder" }).click();
+  await page.getByText("Checking…", { exact: false }).first().waitFor({ timeout: 20000 });
   await shot("02-verifying");
   await page.getByText("Everything is ready.").waitFor({ timeout: 180000 });
   await shot("03-verified");
@@ -67,6 +73,7 @@ try {
   await page.getByRole("button", { name: "Start Captioning" }).click();
   await page.getByText("Select an audio, video, or precomp layer in After Effects to get started.").waitFor();
   await page.getByText("Ready", { exact: true }).waitFor({ timeout: 60000 });
+  check("quality choices are Fast and Accurate", (await page.getByRole("group", { name: "Quality" }).innerText()).replace(/\s+/g, " ").trim() === "Fast Accurate");
   await shot("04-empty-state");
   check("empty state message", true);
   check("transcribe disabled without selection", await page.getByRole("button", { name: "Transcribe" }).isDisabled());
@@ -195,9 +202,9 @@ try {
 
   // exports
   for (const fmt of ["SubRip (SRT)", "AutoCaption Project (JSON)", "WebVTT (VTT)", "Advanced SubStation (ASS)", "Plain transcript (TXT)"]) {
-    await page.getByRole("button", { name: "Export" }).click();
+    await openExport();
     await page.getByRole("menuitem", { name: fmt }).click();
-    await page.waitForTimeout(250);
+    await page.waitForFunction(() => [...document.querySelectorAll(".actionbar .btn")].every((b) => b.getAttribute("aria-busy") !== "true"));
   }
   const outFiles = readdirSync(exportDir);
   check("exports written (srt json vtt ass txt)", ["srt", "json", "vtt", "ass", "txt"].every((e) => outFiles.some((f) => f.endsWith(`.${e}`))), outFiles.join(", "));
@@ -210,39 +217,74 @@ try {
   await shot("14-recent");
   await page.locator(".cap").first().click();
   await page.locator(".cap-time").first().waitFor();
-  check("recent transcription reopens without Whisper", true);
+  check("recent transcription reopens without transcribing again", true);
 
   // import the exported JSON project
   await rpc("setDialogs", { open: join(exportDir, outFiles.find((f) => f.endsWith(".json"))) });
-  await page.getByRole("button", { name: "Export" }).click();
+  await openExport();
   await page.getByRole("menuitem", { name: "Import JSON, SRT or VTT…" }).click();
   await page.getByText("Imported", { exact: false }).first().waitFor();
   check("JSON import restores project", true);
 
   // import SRT -> inferred timing -> align to audio
   await rpc("setDialogs", { open: join(exportDir, outFiles.find((f) => f.endsWith(".srt"))) });
-  await page.getByRole("button", { name: "Export" }).click();
+  await openExport();
   await page.getByRole("menuitem", { name: "Import JSON, SRT or VTT…" }).click();
   await page.getByText("Estimated timing").waitFor();
   await page.getByLabel("More caption options").click();
-  await page.getByRole("menuitem", { name: "Align to selected audio" }).click();
-  await page.getByText("Word timing aligned to the audio.").waitFor({ timeout: 120000 });
-  check("SRT import + align to audio", (await page.getByText("Word-aligned").count()) > 0);
+  await page.getByRole("menuitem", { name: "Match timing to selected audio" }).click();
+  await page.getByText("Word timing matched to the audio.").waitFor({ timeout: 120000 });
+  check("SRT import + match timing to audio", (await page.getByText("Precise timing").count()) > 0);
 
   // settings, diagnostics, about, help
-  await page.getByLabel("Settings").click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await shot("15-settings");
   await page.getByRole("tab", { name: "Diagnostics" }).click();
-  await page.getByText("Backend version").waitFor();
+  await page.getByText("Engine version").waitFor();
   await page.waitForTimeout(500);
   await shot("16-diagnostics");
   const diag = await page.locator(".kv").innerText();
-  check("diagnostics show versions", diag.includes("1.0.0") && diag.includes("CTranslate2"));
+  check("diagnostics show versions and hardware", diag.includes("1.0.0") && diag.includes("Processor") && diag.includes("Graphics"));
+  await page.getByRole("tab", { name: "Engine" }).click();
+  await shot("16b-engine");
   await page.getByRole("tab", { name: "About" }).click();
   await shot("17-about");
-  await page.getByLabel("Help").click();
+  check("about shows the credit", (await page.getByText("cyriqvfx").count()) > 0);
+  await page.getByRole("button", { name: "Help", exact: true }).click();
   await shot("18-help");
-  await page.getByLabel("Help").click();
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+
+  // every visible screen is free of component names and long dashes
+  const BANNED = /whisper|torch|ctranslate|pyannote|wav2vec|ffmpeg|cuda|nltk|python|hugging|silero|backend|\u2014|\u2013/i;
+  const seen = [];
+  for (const [where, go] of [
+    ["main", async () => { await page.getByRole("button", { name: "Settings", exact: true }).click(); await page.getByRole("button", { name: "Settings", exact: true }).click(); }],
+    ...["General", "Engine", "Appearance", "Advanced", "Diagnostics", "About"].map((t) => [`settings/${t}`, async () => {
+      if (!(await page.getByRole("tablist").count())) await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("tab", { name: t }).click();
+      await page.waitForTimeout(250);
+    }]),
+    ["help", async () => { await page.getByRole("button", { name: "Help", exact: true }).click(); }],
+  ]) {
+    await go();
+    const text = await page.evaluate(() => document.body.innerText + " " + [...document.querySelectorAll("[title],[aria-label],[placeholder]")]
+      .map((e) => `${e.getAttribute("title") || ""} ${e.getAttribute("aria-label") || ""} ${e.getAttribute("placeholder") || ""}`).join(" "));
+    const m = text.match(BANNED);
+    if (m) seen.push(`${where}: "${text.slice(Math.max(0, m.index - 40), m.index + 40).replace(/\s+/g, " ")}"`);
+  }
+  check("no component names or long dashes anywhere in the panel", seen.length === 0, seen.join(" | "));
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+
+  // busy feedback: an async button shows a spinner while working
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Diagnostics" }).click();
+  const copyBtn = page.getByRole("button", { name: "Open logs" });
+  await copyBtn.click();
+  const spun = await copyBtn.evaluate((b) => b.getAttribute("aria-busy") === "true" && !!b.querySelector(".spinner"));
+  await page.waitForTimeout(500);
+  const settled = await copyBtn.evaluate((b) => b.getAttribute("aria-busy") !== "true" && !b.querySelector(".spinner"));
+  check("buttons show a spinner while working, then settle", spun && settled);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
 
   // responsive: wide two-column layout and narrow panel
   await page.setViewportSize({ width: 1180, height: 820 });

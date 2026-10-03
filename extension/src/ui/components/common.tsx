@@ -31,23 +31,83 @@ export function Section(props: { title: string; icon?: JSX.Element; open: boolea
   );
 }
 
+/** Shortest time a spinner stays up, so quick actions still read as "done". */
+const MIN_SPIN_MS = 350;
+
+/**
+ * Run an action with busy feedback. Resolves after the action and at least
+ * MIN_SPIN_MS. Unexpected errors become a toast and a log line, never a
+ * silently dead control.
+ */
+export async function runBusy(action: () => unknown, setBusy: (b: boolean) => void, alive: () => boolean = () => true) {
+  setBusy(true);
+  const t0 = performance.now();
+  try {
+    await action();
+  } catch (e) {
+    const store = getStore();
+    store.log("error", `action failed: ${e instanceof Error ? e.stack || e.message : String(e)}`);
+    store.toast("err", "That did not work. Please try again. Details are in the log.");
+  } finally {
+    const left = MIN_SPIN_MS - (performance.now() - t0);
+    if (left > 0) await new Promise((r) => setTimeout(r, left));
+    if (alive()) setBusy(false);
+  }
+}
+
+function useAlive() {
+  const alive = useRef(true);
+  useEffect(() => () => void (alive.current = false), []);
+  return () => alive.current;
+}
+
+/** A button whose click shows a spinner until its (async) work is finished. */
+export function AsyncButton(props: {
+  onClick: () => unknown;
+  children?: ComponentChildren;
+  icon?: JSX.Element;
+  busyText?: string;
+  class?: string;
+  disabled?: boolean;
+  title?: string;
+  label?: string;
+  style?: JSX.CSSProperties;
+  stop?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const alive = useAlive();
+  return (
+    <button type="button" class={props.class ?? "btn"} disabled={props.disabled} aria-busy={busy} title={props.title} aria-label={props.label} style={props.style}
+      onClick={(e) => {
+        if (props.stop) e.stopPropagation();
+        if (!busy) runBusy(props.onClick, setBusy, alive);
+      }}>
+      {busy ? <span class="spinner" aria-hidden="true" /> : props.icon}
+      {busy && props.busyText ? props.busyText : props.children}
+    </button>
+  );
+}
+
 export interface MenuItem {
   label: string;
   sub?: string;
   icon?: JSX.Element;
-  run?: () => void;
+  run?: () => unknown;
   separator?: boolean;
   heading?: boolean;
   disabled?: boolean;
 }
 
 /** Button with a popover menu. Closes on outside click / Escape; arrow keys move focus. */
-export function MenuButton(props: { button: (open: boolean, toggle: () => void) => JSX.Element; items: MenuItem[]; up?: boolean; right?: boolean }) {
+export function MenuButton(props: { button: (open: boolean, toggle: () => void, busy: boolean) => JSX.Element; items: MenuItem[]; up?: boolean; right?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const alive = useAlive();
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggle = () => {
+    if (busy) return;
     if (!open && ref.current) {
       // Fixed positioning so menus are never clipped by scrolling lists.
       const r = ref.current.getBoundingClientRect();
@@ -87,12 +147,17 @@ export function MenuButton(props: { button: (open: boolean, toggle: () => void) 
   }, [open]);
   return (
     <div class="menu-wrap" ref={ref}>
-      {props.button(open, toggle)}
+      {props.button(open, toggle, busy)}
       {open ? createPortal(
         <div class="menu" role="menu" ref={menuRef} style={{ position: "fixed", ...pos, maxHeight: `${Math.round(window.innerHeight * 0.7)}px`, overflowY: "auto" }}>
           {props.items.map((it, i) =>
             it.separator ? <div class="menu-sep" key={i} /> : it.heading ? <div class="menu-label" key={i}>{it.label}</div> : (
-              <button class="menu-item" role="menuitem" key={i} disabled={it.disabled} onClick={() => { setOpen(false); it.run?.(); }}>
+              <button class="menu-item" role="menuitem" key={i} disabled={it.disabled} onClick={() => {
+                setOpen(false);
+                // async items show a spinner on the menu's button until they finish
+                const r = (() => { try { return it.run?.(); } catch (e) { return Promise.reject(e); } })();
+                if (r && typeof (r as Promise<unknown>).then === "function") runBusy(() => r, setBusy, alive);
+              }}>
                 {it.icon ? <span class="faint" style={{ marginTop: 1 }}>{it.icon}</span> : null}
                 <span class="grow">
                   <div>{it.label}</div>
@@ -145,10 +210,15 @@ export function DialogHost() {
           ) : null}
           {d.details ? (
             <div>
-              <button class="btn btn-ghost" style={{ paddingLeft: 0 }} onClick={() => setShowDetails(!showDetails)}>
+              <button type="button" class="btn btn-ghost" style={{ paddingLeft: 0 }} aria-expanded={showDetails} onClick={() => setShowDetails(!showDetails)}>
                 {showDetails ? "Hide" : "View"} technical details
               </button>
-              {showDetails ? <div class="details">{d.details}</div> : null}
+              {showDetails ? (
+                <div class="details">
+                  <div>{d.details}</div>
+                  <AsyncButton class="btn btn-ghost sm-btn" icon={Icon.folder({ size: 12 })} onClick={() => store.f.reveal(store.logsDir())}>Open logs</AsyncButton>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -173,7 +243,7 @@ export function Toasts() {
         <div class={`toast ${t.kind}`} key={t.id}>
           <span class="ico">{t.kind === "ok" ? Icon.check() : t.kind === "err" ? Icon.alert() : t.kind === "warn" ? Icon.alert() : Icon.info()}</span>
           <span class="grow">{t.text}</span>
-          {t.action ? <button class="btn btn-ghost" onClick={() => { t.action!.run(); store.dismissToast(t.id); }}>{t.action.label}</button> : null}
+          {t.action ? <AsyncButton class="btn btn-ghost" onClick={async () => { await t.action!.run(); store.dismissToast(t.id); }}>{t.action.label}</AsyncButton> : null}
           <button class="btn btn-ghost icon-btn sm" aria-label="Dismiss" onClick={() => store.dismissToast(t.id)}>{Icon.x({ size: 12 })}</button>
         </div>
       ))}
@@ -182,13 +252,14 @@ export function Toasts() {
 }
 
 const ACTION_LABEL: Record<ErrorAction, string> = {
-  verify: "Verify Backend", retry: "Retry", locate: "Locate Backend", start: "Start Backend",
-  language: "Choose Language", select: "OK", details: "View Technical Details", cpu: "Use CPU",
+  verify: "Check Engine", retry: "Try Again", locate: "Choose Engine Folder", start: "Start Engine",
+  language: "Choose Language", select: "OK", details: "View technical details", cpu: "Use Processor",
 };
 
-export function ErrorCard(props: { error: FriendlyError; onAction: (a: ErrorAction) => void; onClose?: () => void }) {
+export function ErrorCard(props: { error: FriendlyError; onAction: (a: ErrorAction) => unknown; onClose?: () => void }) {
   const [details, setDetails] = useState(false);
   const e = props.error;
+  const store = getStore();
   return (
     <div class="notice err" role="alert">
       <span class="ico">{Icon.alert()}</span>
@@ -203,15 +274,20 @@ export function ErrorCard(props: { error: FriendlyError; onAction: (a: ErrorActi
           ) : e.causes.length ? <div class="muted">{e.causes[0]}</div> : null}
         </div>
         <div class="row row-wrap" style={{ gap: 6 }}>
-          {e.actions.filter((a) => a !== "details").map((a) => (
-            <button key={a} class="btn" onClick={() => props.onAction(a)}>{ACTION_LABEL[a]}</button>
+          {e.actions.filter((a) => a !== "details").map((a, i) => (
+            <AsyncButton key={a} class={i === 0 ? "btn btn-primary" : "btn"} onClick={() => props.onAction(a)}>{ACTION_LABEL[a]}</AsyncButton>
           ))}
-          {e.detail && e.actions.includes("details") ? (
-            <button class="btn btn-ghost" onClick={() => setDetails(!details)}>{details ? "Hide details" : ACTION_LABEL.details}</button>
+          {e.actions.includes("details") ? (
+            <button type="button" class="btn btn-ghost" aria-expanded={details} onClick={() => setDetails(!details)}>{details ? "Hide details" : ACTION_LABEL.details}</button>
           ) : null}
-          {props.onClose ? <button class="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={props.onClose}>Dismiss</button> : null}
+          {props.onClose ? <button type="button" class="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={props.onClose}>Dismiss</button> : null}
         </div>
-        {details && e.detail ? <div class="details">{e.detail}</div> : null}
+        {details ? (
+          <div class="details">
+            <div>{e.detail || "No further details."}</div>
+            <AsyncButton class="btn btn-ghost sm-btn" icon={Icon.folder({ size: 12 })} onClick={() => store.f.reveal(store.logsDir())}>Open logs</AsyncButton>
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -164,16 +164,34 @@ function makeFiles(): Files {
   };
 }
 
+// The engine only starts when this panel starts it: every launch carries a
+// fresh signed token (see the engine's launchkey.py; same key bytes).
+const LAUNCH_KEY_HEX = "6163652d656e67696e652d33663961" + "07" + "6379726971766678" + "11" + "6175746f63617074696f6e";
+
+export function launchToken(crypto: any): string {
+  // the key is plain ASCII, so a string key gives the same bytes in every context
+  const key = (LAUNCH_KEY_HEX.match(/../g) as string[]).map((h) => String.fromCharCode(parseInt(h, 16))).join("");
+  const nonce: string = crypto.randomBytes(16).toString("hex");
+  const sig: string = crypto.createHmac("sha256", key).update(`${nonce}:autocaption-engine`).digest("hex");
+  return `${nonce}.${sig}`;
+}
+
 function makeBackend(files: Files): BackendProcess {
   const cp = nodeRequire("child_process");
   const path = nodeRequire("path");
+  const crypto = nodeRequire("crypto");
   let child: any = null;
   const exitHandlers: ((code: number | null) => void)[] = [];
-  const exeName = process.platform === "win32" ? "AutoCaptionBackend.exe" : "AutoCaptionBackend";
+  const exeName = process.platform === "win32" ? "AutoCaption Engine.exe" : "AutoCaption Engine";
 
   async function executable(dir: string): Promise<string | null> {
     const exe = path.join(dir, exeName);
-    return (await files.exists(exe)) ? exe : null;
+    return (await files.exists(exe)) && (await files.exists(path.join(dir, "engine.pak"))) ? exe : null;
+  }
+
+  function spawnEngine(exe: string, dir: string, args: string[], stdin: "pipe" | "ignore") {
+    const env = { ...process.env, AUTOCAPTION_LAUNCH: launchToken(crypto) };
+    return cp.spawn(exe, ["--panel", ...args], { cwd: dir, env, windowsHide: true, stdio: [stdin, "pipe", "pipe"] });
   }
 
   function readLines(stream: any, onLine: (line: string) => void) {
@@ -196,10 +214,10 @@ function makeBackend(files: Files): BackendProcess {
     onExit: (cb) => void exitHandlers.push(cb),
     async start(dir) {
       const exe = await executable(dir);
-      if (!exe) throw Object.assign(new Error("Backend executable not found."), { code: "BACKEND_MISSING" });
+      if (!exe) throw Object.assign(new Error("Engine not found."), { code: "ENGINE_MISSING" });
       if (child && child.exitCode === null) child.kill();
       return new Promise((resolve, reject) => {
-        const proc = cp.spawn(exe, [], { cwd: dir, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+        const proc = spawnEngine(exe, dir, [], "pipe");
         child = proc;
         let settled = false;
         let stderr = "";
@@ -207,7 +225,7 @@ function makeBackend(files: Files): BackendProcess {
           if (!settled) {
             settled = true;
             proc.kill();
-            reject(Object.assign(new Error("The caption engine did not start within 60 seconds."), { code: "BACKEND_TIMEOUT", detail: stderr.slice(-2000) }));
+            reject(Object.assign(new Error("The engine did not start within 60 seconds."), { code: "ENGINE_TIMEOUT", detail: stderr.slice(-2000) }));
           }
         }, 60000);
         proc.stderr.setEncoding("utf8");
@@ -231,7 +249,7 @@ function makeBackend(files: Files): BackendProcess {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
-            reject(Object.assign(e, { code: "BACKEND_SPAWN", detail: e.message }));
+            reject(Object.assign(e, { code: "ENGINE_SPAWN", detail: e.message }));
           }
         });
         proc.on("exit", (code: number | null) => {
@@ -239,7 +257,7 @@ function makeBackend(files: Files): BackendProcess {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
-            reject(Object.assign(new Error("The caption engine exited during startup."), { code: "BACKEND_EXIT", detail: stderr.slice(-2000) }));
+            reject(Object.assign(new Error("The engine stopped while starting."), { code: "ENGINE_EXIT", detail: stderr.slice(-2000) }));
           }
           exitHandlers.forEach((h) => h(code));
         });
@@ -248,7 +266,7 @@ function makeBackend(files: Files): BackendProcess {
     async stop() {
       if (child && child.exitCode === null) {
         try {
-          child.stdin.end(); // backend shuts down when its stdin closes
+          child.stdin.end(); // the engine also shuts down when its stdin closes
         } catch {
           /* ignore */
         }
@@ -262,12 +280,12 @@ function makeBackend(files: Files): BackendProcess {
       return new Promise(async (resolve, reject) => {
         const exe = await executable(dir);
         if (!exe) {
-          reject(Object.assign(new Error("Backend executable not found."), { code: "BACKEND_MISSING" }));
+          reject(Object.assign(new Error("Engine not found."), { code: "ENGINE_MISSING" }));
           return;
         }
         const args = ["--self-test"];
         if (quick) args.push("--quick");
-        const proc = cp.spawn(exe, args, { cwd: dir, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+        const proc = spawnEngine(exe, dir, args, "ignore");
         let summary: { ok: boolean; failed: string[] } | null = null;
         let stderr = "";
         proc.stderr.setEncoding("utf8");
@@ -283,10 +301,10 @@ function makeBackend(files: Files): BackendProcess {
             /* ignore */
           }
         });
-        proc.on("error", (e: Error) => reject(Object.assign(e, { code: "BACKEND_SPAWN" })));
+        proc.on("error", (e: Error) => reject(Object.assign(e, { code: "ENGINE_SPAWN", detail: e.message })));
         proc.on("exit", (code: number | null) => {
           if (summary) resolve(summary);
-          else reject(Object.assign(new Error(`Self-test stopped unexpectedly (exit ${code}).`), { code: "SELFTEST_CRASH", detail: stderr.slice(-3000) }));
+          else reject(Object.assign(new Error(`The engine check stopped unexpectedly (exit ${code}).`), { code: "SELFTEST_CRASH", detail: stderr.slice(-3000) }));
         });
       });
     },

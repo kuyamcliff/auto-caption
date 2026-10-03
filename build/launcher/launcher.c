@@ -1,8 +1,12 @@
 /*
- * AutoCaptionBackend.exe - native launcher for the bundled Python runtime.
+ * AutoCaption Engine.exe - native launcher for the bundled engine runtime.
  *
- * Runs  <dir>\runtime\python.exe -X utf8 -I -m autocaption <args...>
- * with stdio inherited, so the panel talks to the backend through this
+ * Only starts when the panel launches it: the first argument must be --panel
+ * (and the engine itself checks the panel's launch token). Opened any other
+ * way, for example by double-clicking, it shows a short message and exits.
+ *
+ * Runs  <dir>\bin\python.exe -X utf8 -I -m autocaption <args after --panel>
+ * with stdio inherited, so the panel talks to the engine through this
  * process. A job object with KILL_ON_JOB_CLOSE guarantees the Python process
  * tree exits when this launcher exits. The launcher also watches its own
  * parent (After Effects' CEP helper): when the parent goes away (AE closed,
@@ -18,7 +22,7 @@
 #include <wchar.h>
 
 static void fail(const wchar_t *msg) {
-    fwprintf(stderr, L"AutoCaptionBackend: %ls (error %lu)\n", msg, GetLastError());
+    fwprintf(stderr, L"AutoCaption Engine: %ls (error %lu)\n", msg, GetLastError());
 }
 
 /* Missing or invalid std handles would make Python abort at startup. */
@@ -51,22 +55,29 @@ static HANDLE open_parent(void) {
 }
 
 int wmain(int argc, wchar_t **argv) {
-    wchar_t exe[MAX_PATH], dir[MAX_PATH], python[MAX_PATH];
+    if (argc < 2 || wcscmp(argv[1], L"--panel") != 0) {
+        MessageBoxW(NULL, L"This engine runs from the AutoCaption AE panel in After Effects.\n\n"
+                          L"Open After Effects, then Window > Extensions > AutoCaption AE.",
+                    L"AutoCaption Engine", MB_OK | MB_ICONINFORMATION);
+        return 64;
+    }
+    wchar_t exe[MAX_PATH], dir[MAX_PATH], python[MAX_PATH], pak[MAX_PATH];
     if (!GetModuleFileNameW(NULL, exe, MAX_PATH)) { fail(L"cannot resolve own path"); return 90; }
     wcscpy(dir, exe);
     PathRemoveFileSpecW(dir);
-    swprintf(python, MAX_PATH, L"%ls\\runtime\\python.exe", dir);
-    if (GetFileAttributesW(python) == INVALID_FILE_ATTRIBUTES) {
-        fwprintf(stderr, L"AutoCaptionBackend: runtime missing at %ls\n", python);
+    swprintf(python, MAX_PATH, L"%ls\\bin\\python.exe", dir);
+    swprintf(pak, MAX_PATH, L"%ls\\engine.pak", dir);
+    if (GetFileAttributesW(python) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(pak) == INVALID_FILE_ATTRIBUTES) {
+        fwprintf(stderr, L"AutoCaption Engine: engine files are missing in %ls\n", dir);
         return 91;
     }
 
-    /* command line: "python.exe" -X utf8 -I -m autocaption <original args> */
+    /* command line: "python.exe" -X utf8 -I -m autocaption <args after --panel> */
     size_t cap = 1024;
-    for (int i = 1; i < argc; i++) cap += wcslen(argv[i]) * 2 + 4;
+    for (int i = 2; i < argc; i++) cap += wcslen(argv[i]) * 2 + 4;
     wchar_t *cmd = (wchar_t *)calloc(cap, sizeof(wchar_t));
     swprintf(cmd, cap, L"\"%ls\" -X utf8 -I -m autocaption", python);
-    for (int i = 1; i < argc; i++) {
+    for (int i = 2; i < argc; i++) {
         wcscat(cmd, L" \"");
         /* arguments are simple flags; escape embedded quotes defensively */
         for (const wchar_t *p = argv[i]; *p; p++) {
@@ -101,7 +112,7 @@ int wmain(int argc, wchar_t **argv) {
     si.hStdInput = std_or_nul(STD_INPUT_HANDLE, GENERIC_READ);
     si.hStdOutput = std_or_nul(STD_OUTPUT_HANDLE, GENERIC_WRITE);
     si.hStdError = std_or_nul(STD_ERROR_HANDLE, GENERIC_WRITE);
-    /* Share our console when we have one (VERIFY_INSTALLATION.bat); when started
+    /* Share our console when we have one (testing from a terminal); when started
        hidden by the panel there is no visible console and none is created. */
     DWORD flags = CREATE_SUSPENDED | (GetConsoleWindow() ? 0 : CREATE_NO_WINDOW);
     if (!CreateProcessW(python, cmd, NULL, NULL, TRUE, flags, NULL, dir, &si, &pi)) {
@@ -112,11 +123,11 @@ int wmain(int argc, wchar_t **argv) {
     ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
     /* Wait for Python, or for our parent to disappear (then the job object
-       terminates Python when this process exits). --self-test/--verify run
-       from a console are not tied to the parent. */
+       terminates Python when this process exits). One-shot modes (--self-test,
+       --verify, --version) are not tied to the parent. */
     HANDLE parent = NULL;
     BOOL serving = TRUE;
-    for (int i = 1; i < argc; i++) if (argv[i][0] == L'-') serving = FALSE;
+    for (int i = 2; i < argc; i++) if (argv[i][0] == L'-') serving = FALSE;
     if (serving) parent = open_parent();
     HANDLE waits[2] = { pi.hProcess, parent };
     DWORD which = WaitForMultipleObjects(parent ? 2 : 1, waits, FALSE, INFINITE);

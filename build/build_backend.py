@@ -1,16 +1,14 @@
-"""Build the self-contained Windows x64 backend folder.
+"""Build the self-contained Windows x64 engine folder.
 
-  python build/build_backend.py <out_backend_dir> [--models <dir with models/>] [--no-cuda]
+  python build/build_backend.py <out_dir> --models <dir with models/> [--no-cuda] [--reuse-runtime <old bin dir>]
 
-Result layout (relocatable, no absolute paths):
-  backend/AutoCaptionBackend.exe     native launcher (build/launcher/launcher.c)
-  backend/runtime/                   embeddable CPython 3.11 + site-packages
-  backend/runtime/cuda/              cuBLAS / cuDNN DLLs for optional GPU use
-  backend/app/autocaption/           backend source (+ precompiled .pyc)
-  backend/models/                    whisper base+small, alignment, VAD, NLTK data
-  backend/ffmpeg/ffmpeg.exe          FFmpeg (GPL build, see licenses/)
-  backend/selftest/selftest.wav      synthetic test speech
-  backend/licenses/, schemas/, config/, manifest.json
+Result (relocatable, no absolute paths):
+  AutoCaption Engine/
+    AutoCaption Engine.exe     native launcher (build/launcher/launcher.c); runs only when the panel starts it
+    engine.pak                 engine code, models and data, read in place (build/make_pak.py)
+    bin/                       embeddable CPython 3.11 + trimmed site-packages, cuda/ DLLs,
+                               ffmpeg.exe, manifest.json
+    Third-party notices.txt    every bundled component and its license
 
 Runs on Linux or Windows: wheels are resolved for win_amd64 by `uv` using
 build/requirements-win.lock, so the build machine's Python is never shipped.
@@ -21,6 +19,7 @@ import argparse
 import compileall
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -42,6 +41,15 @@ TORCH_INDEX = "https://download.pytorch.org/whl/cpu"
 PRUNE_DIRS = {"__pycache__", "tests", "benchmarks"}
 PRUNE_KEEP_DIRS = {"torch/testing", "torch/include"}  # torch imports torch.testing at runtime
 PRUNE_SUFFIXES = {".lib", ".pdb", ".a", ".h", ".hpp", ".cuh", ".pyi"}
+# Packages pulled in by the dependency tree that no engine code path imports
+# (measured by recording every import across transcription, timing, speech
+# detection, GPU/CPU fallback and the self test). Removed with their metadata.
+UNUSED_PACKAGES = ["sqlalchemy", "grpc", "hf_xet", "pygments", "pytorch_lightning", "lightning_fabric", "aiohttp",
+                   "yarl", "multidict", "propcache", "frozenlist", "aiosignal", "aiohappyeyeballs", "alembic", "click",
+                   "pytorch_metric_learning", "mako", "markdown_it", "mdurl", "functorch"]
+DIST_NAMES = {"grpc": "grpcio", "markdown_it": "markdown_it_py"}
+PTH = "python311.zip\n.\nLib\\site-packages\n..\\engine.pak\\app\nimport site\n"
+NOTICES: list[tuple[str, str]] = []
 
 
 def log(msg: str) -> None:
@@ -79,13 +87,13 @@ def uv() -> str:
 
 
 def install_runtime(out: Path) -> dict:
-    rt = out / "runtime"
+    rt = out / "bin"
     log("embeddable CPython " + PYTHON_VERSION)
     with zipfile.ZipFile(fetch(PYTHON_URL, f"python-{PYTHON_VERSION}-embed-amd64.zip")) as z:
         z.extractall(rt)
-    # Isolated module search path: stdlib zip, site-packages, our app. No user
-    # site, no PYTHONPATH, no system Python can leak in.
-    (rt / "python311._pth").write_text("python311.zip\n.\nLib\\site-packages\n..\\app\nimport site\n", encoding="ascii")
+    # Isolated module search path: stdlib zip, site-packages, engine code inside
+    # engine.pak. No user site, no PYTHONPATH, no system Python can leak in.
+    (rt / "python311._pth").write_text(PTH, encoding="ascii")
     site = rt / "Lib" / "site-packages"
     site.mkdir(parents=True, exist_ok=True)
     log("installing locked wheels for win_amd64 / cp311")
@@ -102,7 +110,7 @@ def install_runtime(out: Path) -> dict:
 
 
 def install_cuda(out: Path) -> list[str]:
-    cuda = out / "runtime" / "cuda"
+    cuda = out / "bin" / "cuda"
     cuda.mkdir(parents=True, exist_ok=True)
     tmp = CACHE / "cuda-wheels"
     tmp.mkdir(parents=True, exist_ok=True)
@@ -118,15 +126,15 @@ def install_cuda(out: Path) -> list[str]:
                         shutil.copyfileobj(src, dst, 1 << 20)
                     names.append(target.name)
                 elif "license" in info.filename.lower() and info.filename.lower().endswith((".txt", "license")):
-                    (out / "licenses" / "nvidia").mkdir(parents=True, exist_ok=True)
-                    (out / "licenses" / "nvidia" / f"{whl.name.split('-')[0]}-LICENSE.txt").write_bytes(z.read(info))
+                    NOTICES.append((f"NVIDIA {whl.name.split('-')[0]} (GPU runtime DLLs in bin/cuda)",
+                                    z.read(info).decode("utf-8", "replace")))
     log(f"CUDA runtime DLLs: {len(names)}")
     return names
 
 
 def install_ffmpeg(out: Path) -> str:
     zpath = fetch(FFMPEG_URL, Path(FFMPEG_URL).name)
-    ff = out / "ffmpeg"
+    ff = out / "bin"
     ff.mkdir(parents=True, exist_ok=True)
     version = Path(FFMPEG_URL).name.split("-")[1]
     with zipfile.ZipFile(zpath) as z:
@@ -134,9 +142,9 @@ def install_ffmpeg(out: Path) -> str:
             base = Path(info.filename).name
             if base == "ffmpeg.exe":
                 (ff / base).write_bytes(z.read(info))
-            elif base in ("LICENSE", "README.txt"):
-                (out / "licenses" / "ffmpeg").mkdir(parents=True, exist_ok=True)
-                (out / "licenses" / "ffmpeg" / base).write_bytes(z.read(info))
+            elif base == "LICENSE":
+                NOTICES.append((f"FFmpeg {version} (bin/ffmpeg.exe, gyan.dev essentials build, GPL v3, run as a separate "
+                                "program; source: https://ffmpeg.org/download.html)", z.read(info).decode("utf-8", "replace")))
     return version
 
 
@@ -158,64 +166,131 @@ def prune(site: Path) -> int:
     return freed
 
 
+def trim_unused(site: Path) -> int:
+    freed = 0
+    for name in UNUSED_PACKAGES:
+        dist = DIST_NAMES.get(name, name)
+        targets = [site / name] + [d for d in site.glob("*.dist-info")
+                                   if d.name[: -len(".dist-info")].rpartition("-")[0].lower().replace("-", "_") == dist]
+        for t in targets:
+            if t.is_dir():
+                freed += sum(f.stat().st_size for f in t.rglob("*") if f.is_file())
+                shutil.rmtree(t)
+    return freed
+
+
+def write_notices(out: Path, site: Path, registry: dict) -> None:
+    """One aggregated license file for everything bundled with the engine."""
+    import email.parser
+
+    lines = ["AutoCaption AE Engine: third-party notices", "", "Made by cyriqvfx.",
+             "The engine bundles the software and data listed below. Each component remains under its own license;",
+             "the full license texts follow the summary.", "", "SUMMARY", ""]
+    texts: list[tuple[str, str]] = []
+    for dist in sorted(site.glob("*.dist-info"), key=lambda p: p.name.lower()):
+        meta_path = dist / "METADATA"
+        if not meta_path.exists():
+            continue
+        meta = email.parser.Parser().parsestr(meta_path.read_text(encoding="utf-8", errors="replace"))
+        name, ver = meta.get("Name", dist.name), meta.get("Version", "")
+        lic = meta.get("License-Expression") or ((meta.get("License") or "").splitlines() or [""])[0]
+        if not lic or len(lic) > 80:
+            cls = [c.split("::")[-1].strip() for c in meta.get_all("Classifier") or [] if c.startswith("License ::")]
+            lic = ", ".join(cls) or "see license text"
+        url = meta.get("Home-page") or (meta.get_all("Project-URL") or [""])[0].split(",")[-1].strip()
+        lines.append(f"  {name} {ver}: {lic}" + (f" ({url})" if url else ""))
+        for f in sorted(p for p in dist.rglob("*") if p.is_file() and re.search(r"(LICEN[CS]E|COPYING|NOTICE)", p.name, re.I)):
+            texts.append((f"{name} {ver}: {f.name}", f.read_text(encoding="utf-8", errors="replace")))
+    lines += ["", f"  CPython {PYTHON_VERSION} embeddable distribution: PSF License"]
+    py_lic = out / "bin" / "LICENSE.txt"
+    if py_lic.exists():
+        texts.append((f"CPython {PYTHON_VERSION}", py_lic.read_text(encoding="utf-8", errors="replace")))
+        py_lic.unlink()
+    for title, _ in NOTICES:
+        lines.append(f"  {title}")
+    texts += NOTICES
+    lines += ["", "MODELS AND DATA (inside engine.pak)", ""]
+    for key, n in sorted(registry.get("notices", {}).items()):
+        if isinstance(n, dict):
+            lines.append(f"  {key}: {n.get('license')} (source: {n.get('source')}" +
+                         (f", revision {n['revision']})" if n.get("revision") else ")"))
+        else:
+            lines.append(f"  {key}: {n}")
+    lines += ["  data/nltk: NLTK punkt_tab tokenizer data, Apache 2.0",
+              "  Note: the French, German, Spanish and Italian word-timing models are licensed CC BY-NC 4.0",
+              "  (non-commercial use). The English word-timing model is MIT licensed.", "",
+              "  The panel is built with Preact (MIT).", "", "LICENSE TEXTS", ""]
+    for title, body in texts:
+        lines += ["-" * 78, title, "-" * 78, body.strip(), ""]
+    (out / "Third-party notices.txt").write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+
+
 def build_launcher(out: Path) -> None:
     src = HERE / "launcher" / "launcher.c"
-    exe = out / "AutoCaptionBackend.exe"
+    exe = out / "AutoCaption Engine.exe"
     cc = shutil.which("x86_64-w64-mingw32-gcc") or shutil.which("gcc")
     if cc is None:
         raise SystemExit("A C compiler (mingw-w64) is required to build the launcher.")
-    subprocess.run([cc, "-O2", "-s", "-municode", "-o", str(exe), str(src), "-lshlwapi"], check=True)
+    subprocess.run([cc, "-O2", "-s", "-municode", "-o", str(exe), str(src), "-lshlwapi", "-luser32"], check=True)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("out")
+    ap.add_argument("out", help="output folder (becomes 'AutoCaption Engine')")
     ap.add_argument("--models", required=True, help="directory containing models/ (from fetch_models.py)")
     ap.add_argument("--no-cuda", action="store_true")
+    ap.add_argument("--reuse-runtime", help="copy an already installed bin/ (same lock file) instead of re-downloading wheels")
     args = ap.parse_args()
     out = Path(args.out).resolve()
     if out.exists():
         shutil.rmtree(out)
-    (out / "licenses").mkdir(parents=True)
+    out.mkdir(parents=True)
 
-    versions = install_runtime(out)
-    site = out / "runtime" / "Lib" / "site-packages"
-    freed = prune(site)
-    log(f"pruned {freed / 1e6:.0f} MB of headers/tests/import libs")
-    cuda = [] if args.no_cuda else install_cuda(out)
+    if args.reuse_runtime:
+        log(f"reusing runtime from {args.reuse_runtime}")
+        shutil.copytree(args.reuse_runtime, out / "bin", ignore=shutil.ignore_patterns("ffmpeg.exe", "manifest.json", "__pycache__"))
+        # GPU DLLs come along with the runtime; take their license texts from the previous build
+        for lic in sorted((Path(args.reuse_runtime).parent / "licenses" / "nvidia").glob("*.txt")):
+            NOTICES.append((f"NVIDIA {lic.stem.removesuffix('-LICENSE')} (GPU runtime DLLs in bin/cuda)", lic.read_text("utf-8", "replace")))
+        (out / "bin" / "python311._pth").write_text(PTH, encoding="ascii")
+        site = out / "bin" / "Lib" / "site-packages"
+        versions = {}
+        for dist in site.glob("*.dist-info"):
+            name, _, ver = dist.name[: -len(".dist-info")].rpartition("-")
+            versions[name.lower().replace("_", "-")] = ver
+    else:
+        versions = install_runtime(out)
+    site = out / "bin" / "Lib" / "site-packages"
+    log(f"pruned {prune(site) / 1e6:.0f} MB of headers/tests/import libs")
+    log(f"removed {trim_unused(site) / 1e6:.0f} MB of unused packages")
+    if args.no_cuda:
+        shutil.rmtree(out / "bin" / "cuda", ignore_errors=True)
+        cuda = []
+    elif args.reuse_runtime and (out / "bin" / "cuda").is_dir():
+        cuda = [p.name for p in (out / "bin" / "cuda").glob("*.dll")]
+    else:
+        cuda = install_cuda(out)
     ffmpeg_version = install_ffmpeg(out)
-
-    log("app + data")
-    shutil.copytree(REPO / "backend" / "autocaption", out / "app" / "autocaption",
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    shutil.copytree(REPO / "backend" / "selftest", out / "selftest")
-    shutil.copytree(REPO / "backend" / "schemas", out / "schemas")
-    (out / "config").mkdir()
-    (out / "config" / "defaults.json").write_text(json.dumps(
-        {"device": "auto", "defaultModel": "base", "vad": "pyannote", "workerIdleUnloadSec": 600}, indent=1))
-    log("models")
-    shutil.copytree(Path(args.models) / "models", out / "models")
-    build_launcher(out)
 
     # Precompile bytecode (CPython 3.11 .pyc is platform independent) so the
     # first start does not have to write into the install folder.
-    log("precompiling bytecode")
     if sys.version_info[:2] == (3, 11):
+        log("precompiling bytecode")
         compileall.compile_dir(str(site), quiet=1, workers=0, invalidation_mode=compileall.py_compile.PycInvalidationMode.UNCHECKED_HASH)
-        compileall.compile_dir(str(out / "app"), quiet=1, workers=0, invalidation_mode=compileall.py_compile.PycInvalidationMode.UNCHECKED_HASH)
     else:
         log("skipping precompile (build Python is not 3.11)")
 
+    log("engine.pak")
+    subprocess.run([sys.executable, str(HERE / "make_pak.py"), args.models, str(out / "engine.pak")], check=True)
+    with zipfile.ZipFile(out / "engine.pak") as z:
+        registry = json.loads(z.read("registry.json"))
+    build_launcher(out)
+    write_notices(out, site, registry)
+
     info = {
-        "runtimeVersion": f"CPython {PYTHON_VERSION} (embeddable, win-amd64)",
-        "whisperxVersion": versions.get("whisperx"),
-        "fasterWhisperVersion": versions.get("faster-whisper"),
-        "ctranslate2Version": versions.get("ctranslate2"),
-        "torchVersion": versions.get("torch"),
-        "torchaudioVersion": versions.get("torchaudio"),
-        "pyannoteVersion": versions.get("pyannote.audio") or versions.get("pyannote-audio"),
-        "ffmpegVersion": ffmpeg_version,
-        "cudaRuntime": "cuBLAS 12.9 + cuDNN 9.27 (optional GPU)" if cuda else None,
+        "runtime": f"CPython {PYTHON_VERSION} (embeddable, win-amd64)",
+        "ffmpeg": ffmpeg_version,
+        "gpuRuntime": "cuBLAS 12.9, cuDNN 9.27" if cuda else None,
         "packages": dict(sorted(versions.items())),
     }
     (out.parent / "build-versions.json").write_text(json.dumps(info, indent=1))
