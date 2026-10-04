@@ -2,7 +2,7 @@
 // technical output (process output, stack traces) only goes to the logs; the
 // panel shows a short reference the logs can be searched for.
 
-export type ErrorAction = "verify" | "retry" | "locate" | "start" | "language" | "select" | "details" | "cpu";
+export type ErrorAction = "verify" | "retry" | "locate" | "start" | "language" | "select" | "details" | "cpu" | "openfolder";
 
 export interface FriendlyError {
   code: string;
@@ -24,6 +24,7 @@ const FRESH_COPY = "Copy a fresh AutoCaption Engine folder from the download, th
 const MAP: Record<string, Omit<FriendlyError, "code" | "detail">> = {
   ENGINE_MISSING: { title: "Engine not found", causes: ["The AutoCaption Engine folder was moved, renamed or deleted."], actions: ["locate"] },
   ENGINE_UNSET: { title: "Choose the engine folder", causes: ["AutoCaption needs its engine folder from the download."], actions: ["locate"] },
+  ENGINE_NOT_SET_UP: { title: "Finish setting up the engine", causes: ["Open the AutoCaption Engine folder, double-click “Set Up Engine.bat” and wait for it to finish. Then check again."], actions: ["openfolder", "verify"] },
   ENGINE_SPAWN: { title: "The engine could not start", causes: ["Security software blocked AutoCaption Engine.exe.", "The engine folder is incomplete."], actions: ["verify", "retry", "details"] },
   ENGINE_EXIT: { title: "The engine could not start", causes: ["The engine folder is incomplete or damaged.", "Security software stopped it."], actions: ["verify", "retry", "details"] },
   ENGINE_TIMEOUT: { title: "The engine is taking too long to start", causes: ["The computer is busy, or security software is scanning the engine folder."], actions: ["retry", "verify", "details"] },

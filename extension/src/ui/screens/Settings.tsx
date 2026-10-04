@@ -2,7 +2,7 @@ import { useEffect } from "preact/hooks";
 import { APP_VERSION } from "../../core/defaults";
 import { AsyncButton, copyText, ErrorCard, Seg } from "../components/common";
 import { Icon } from "../icons";
-import { getStore, useStore, type AppState } from "../store";
+import { getStore, qualityOptions, useStore, type AppState } from "../store";
 import { Credit, VerifyList } from "./Onboarding";
 
 const TABS: { id: AppState["settingsTab"]; label: string }[] = [
@@ -10,19 +10,17 @@ const TABS: { id: AppState["settingsTab"]; label: string }[] = [
   { id: "advanced", label: "Advanced" }, { id: "diagnostics", label: "Diagnostics" }, { id: "about", label: "About" },
 ];
 
-const QUALITY_FALLBACK = [{ id: "fast", label: "Fast", description: "Quickest results" }, { id: "accurate", label: "Accurate", description: "Best for difficult audio" }];
-
 function General() {
   const store = getStore();
   const c = useStore((s) => s.config);
   const models = useStore((s) => s.backend.models);
-  const quality = models?.quality?.length ? models.quality : QUALITY_FALLBACK;
+  const quality = qualityOptions(models);
   return (
     <div class="stack-lg">
       <div class="field">
         <label>Default quality</label>
         <Seg label="Default quality" value={c.defaultModel} onChange={(v) => store.saveConfig({ defaultModel: v })}
-          options={quality.map((m) => ({ value: m.id, label: m.label, title: m.description }))} />
+          options={quality.map((m) => ({ value: m.id, label: m.label, title: m.description, disabled: m.missing }))} />
         <span class="faint small">Fast gives the quickest results. Accurate takes longer and handles difficult audio better.</span>
       </div>
       <div class="field">

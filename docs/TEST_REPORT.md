@@ -57,6 +57,33 @@ and the pak's `registry.json`.
 | Panel UI end-to-end, offline, panel from the extracted archive | PASS (35/35) |
 | No long dashes in `Read Me.txt`, `Changelog.txt`, the installer | PASS |
 
+## Lite edition (uses the PC's own Python)
+
+| Item | Value |
+| --- | --- |
+| Archive | `AutoCaptionAE_v1.0.0_Windows_Lite.zip`, 366,169,002 bytes (366 MB), 20 entries |
+| SHA-256 | `4ced268014ec92e6d490fa0f57d8a8b77f787f5ca1ba9f9ece3899206b0ae2ee` |
+| Add-on: `Accurate quality.pak` | 486 MB, SHA-256 `0de5979b8350a4085d956b7cec74d70e392ea6d8b4edcf310559f72723add7d7` |
+| Add-on: `More languages.pak` | 755 MB, SHA-256 `096dd9a676c92ca378493405f4f8694f79f87939c1d46b022448decc96f1959c` |
+| Download (all three) | https://gofile.io/d/pVYSzQ5N (GoFile MD5 matches for each file) |
+
+| Check | Result |
+| --- | --- |
+| Windows Python 3.11.9 (official installer) in Wine, `Set Up Engine.bat --no-gpu` from a path with spaces, real internet | PASS: environment created, all pinned libraries installed, engine import check OK (environment is 4.1 GB, mostly the processor build of the ML library) |
+| Engine check through the launcher (`bin\venv` path), offline | PASS 12/12; Accurate and other languages "Not included" |
+| Engine check with both add-on packs in the folder | PASS 12/12, all rows ready |
+| API suite, lite engine under Wine, offline | **59/59** (including `multiple_pauses`, which the full build misses) |
+| Panel UI end-to-end with the lite engine | 36/36 (Accurate shown but disabled) |
+| Extracted zip vs the tested folder | identical except the manifest's build timestamp; `checksums.txt` OK |
+| Full edition after the multi-pack code change | Linux API 56/56, unit tests 56/56 |
+
+Setup found two pinned packages published only as pure-Python source
+(antlr4-python3-runtime 4.9.3, docopt 0.6.2); setup uses `--prefer-binary` so pip
+builds those two locally (no compiler needed). Python 3.10 is not supported by
+the pinned set (one library needs 3.11+); 3.11 to 3.13 resolve. Not tested: the
+optional NVIDIA install step (no GPU here), Python 3.12/3.13 installs (resolution
+checked only).
+
 ## Unit tests (`extension/`, vitest): 56/56 PASS
 
 Covered:

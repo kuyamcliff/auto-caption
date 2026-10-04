@@ -47,6 +47,21 @@ function migrateConfig(c: Config): Config {
   return { ...c, defaultModel: model === "fast" || model === "accurate" ? model : "fast", device, vad };
 }
 
+/** Quality levels for the pickers. Levels the engine does not have (the lite
+ *  download without the Accurate pack) stay visible but disabled. */
+export function qualityOptions(models?: ModelsInfo): { id: string; label: string; description: string; missing: boolean }[] {
+  const known = [{ id: "fast", label: "Fast", description: "Quickest results" }, { id: "accurate", label: "Accurate", description: "Best for difficult audio" }];
+  if (!models?.quality?.length) return known.map((k) => ({ ...k, missing: false }));
+  const have = new Map(models.quality.map((q) => [q.id, q]));
+  return known.map((k) => {
+    const q = have.get(k.id);
+    return q ? { ...q, missing: false } : { ...k, description: "Not included. Add the Accurate quality pack to use it.", missing: true };
+  });
+}
+
+/** Languages whose precise timing comes with the More languages pack. */
+export const PACK_LANGUAGES = ["fr", "de", "es", "it"];
+
 /** How a project's quality level is shown ("Fast", "Accurate", "Imported"). */
 export function qualityLabel(model: string): string {
   if (model === "import") return "Imported";

@@ -50,6 +50,25 @@ The panel never names the components inside the engine: it shows "Engine",
 "Fast" / "Accurate" and plain-language checks. `build_release.py` enforces this
 with a wording audit (component names and long dashes in user-facing text).
 
+## Lite edition (under 500 MB)
+
+For machines that already have 64-bit Python 3.11 to 3.13. The download is the
+panel plus a 367 MB engine folder: launcher, a lite `engine.pak` (Fast quality,
+English word timing, speech detection) and `Set Up Engine.bat`, which creates
+`bin\venv` from the user's Python and installs the same pinned libraries
+(`setup/requirements.txt`, about 1 GB, once; NVIDIA support optional). The
+launcher uses `bin\python.exe` when present (full edition), else `bin\venv`.
+
+Optional add-on packs, dropped next to `engine.pak`, are merged in by the
+engine: `Accurate quality.pak` (486 MB) and `More languages.pak` (755 MB,
+French/German/Spanish/Italian word timing). Missing levels show as disabled /
+"Not included" in the panel.
+
+```
+python build/build_lite.py out/lite --models out/models-stage --notices "out/build/AutoCaption Engine/Third-party notices.txt"
+python build/build_release.py --lite --engine "out/lite/AutoCaption Engine" --out out/release-lite
+```
+
 ## Building
 
 Linux or Windows build machine with Python 3.11, Node 22 and mingw-w64:

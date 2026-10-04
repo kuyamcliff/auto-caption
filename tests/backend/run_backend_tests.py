@@ -190,6 +190,7 @@ def main() -> int:
     ap.add_argument("--fixtures", default="all")
     ap.add_argument("--model", default="fast")
     ap.add_argument("--skip-long", action="store_true")
+    ap.add_argument("--lite", action="store_true", help="lite engine without add-on packs (Fast quality only)")
     args = ap.parse_args()
 
     env = dict(os.environ)
@@ -218,7 +219,8 @@ def main() -> int:
         check("health", st == 200 and body.get("ok"), json.dumps({k: body.get(k) for k in ("version", "apiVersion")}))
         st, body = be.request("GET", "/models")
         names = [m["id"] for m in body.get("quality", [])]
-        check("models lists fast and accurate", st == 200 and {"fast", "accurate"} <= set(names), ",".join(names))
+        want = {"fast"} if args.lite else {"fast", "accurate"}
+        check(f"models lists {' and '.join(sorted(want))}", st == 200 and want <= set(names), ",".join(names))
         langs = [m["language"] for m in body.get("timing", [])]
         check("alignment registry includes en", "en" in langs, ",".join(langs))
         st, body = be.request("GET", "/manifest")

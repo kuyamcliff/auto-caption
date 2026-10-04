@@ -118,7 +118,8 @@ TECH_WORDS = re.compile(r"whisper|pytorch|torch|ctranslate|pyannote|wav2vec|ffmp
 
 def wording_audit(report: Path) -> bool:
     files = [p for p in (REPO / "extension" / "src" / "ui").rglob("*") if p.suffix in (".ts", ".tsx")] + \
-        [p for p in (HERE / "dist-files").rglob("*") if p.is_file()]
+        [p for d in ("dist-files", "dist-lite") for p in (HERE / d).rglob("*") if p.is_file()] + \
+        [HERE / "lite" / "Set Up Engine.bat"]
     hits = []
     for f in files:
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -129,6 +130,8 @@ def wording_audit(report: Path) -> bool:
             text = code if f.suffix not in (".ts", ".tsx") else " ".join(
                 "".join(m) for m in re.findall(r'"([^"]*)"|\'([^\']*)\'|`([^`]*)`|>([^<>{}]+)<', code))
             # "// stored value, not shown" marks internal values compared in code
+            if "dist-lite" in f.parts or f.name == "Set Up Engine.bat":
+                text = re.sub(r"python(\.org)?", "", text, flags=re.I)  # the lite download runs on the user's own Python
             if TECH_WORDS.search(text) and not re.search(r"backendDir|PlayerDebugMode|// stored value, not shown", code):
                 hits.append(f"{f.relative_to(REPO).as_posix()}:{n}: {code[:140]}")
     report.write_text("WORDING AUDIT (component names and long dashes in user-facing text)\n" +
@@ -161,6 +164,7 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--versions", help="build-versions.json from build_backend.py")
     ap.add_argument("--skip-tests", action="store_true")
+    ap.add_argument("--lite", action="store_true", help="the lite engine folder from build_lite.py (user's own Python)")
     args = ap.parse_args()
     engine_src = Path(args.engine).resolve()
     out = Path(args.out).resolve()
@@ -198,7 +202,7 @@ def main() -> int:
 
     engine = pkg / "AutoCaption Engine"
     shutil.copytree(engine_src, engine, copy_function=copy_fn, ignore=shutil.ignore_patterns("manifest.json"))
-    for f in (HERE / "dist-files").iterdir():
+    for f in (HERE / ("dist-lite" if args.lite else "dist-files")).iterdir():
         if f.is_dir():
             shutil.copytree(f, pkg / f.name)
         elif f.name != "VERSION.txt":
@@ -207,7 +211,7 @@ def main() -> int:
 
     log("manifest (SHA-256 of every engine file)")
     versions = args.versions or str(engine_src.parent / "build-versions.json")
-    v = json.loads(Path(versions).read_text())
+    v = json.loads(Path(versions).read_text()) if Path(versions).is_file() else {"edition": "lite"}
     v.pop("packages", None)
     tmpv = out / "versions.json"
     tmpv.write_text(json.dumps(v))
@@ -227,7 +231,7 @@ def main() -> int:
         "\n".join(f"{h}  {n}" for n, h in sums.items()) + "\n", encoding="utf-8")
 
     log("archive")
-    complete = out / f"AutoCaptionAE_v{VERSION}_Windows.zip"
+    complete = out / f"AutoCaptionAE_v{VERSION}_Windows{'_Lite' if args.lite else ''}.zip"
     zip_dir(pkg, complete, "AutoCaptionAE")
     log("verifying archive (CRC of every member)")
     entries = verify_zip(complete)
@@ -237,6 +241,7 @@ def main() -> int:
         "engineSize": gb(dir_size(engine)),
         "enginePakSize": gb((engine / "engine.pak").stat().st_size),
         "engineBinSize": gb(dir_size(engine / "bin")),
+        "edition": "lite" if args.lite else "full",
         "gpuRuntimeSize": gb(dir_size(engine / "bin" / "cuda")) if (engine / "bin" / "cuda").exists() else None,
         "zip": {"path": str(complete), "size": gb(complete.stat().st_size), "bytes": complete.stat().st_size,
                 "sha256": sha256(complete), "entries": entries},

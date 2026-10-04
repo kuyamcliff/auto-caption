@@ -1,6 +1,12 @@
 """Build engine.pak: engine code, models and data in one file.
 
-  python build/make_pak.py <models_stage_dir> <out/engine.pak>
+  python build/make_pak.py <models_stage_dir> <out/engine.pak>                        full engine.pak
+  python build/make_pak.py <stage> <out/engine.pak> --speech fast --timing en           lite engine.pak
+  python build/make_pak.py <stage> "<out/Accurate quality.pak>" --pack "Accurate quality" --speech accurate --timing ""
+  python build/make_pak.py <stage> "<out/More languages.pak>" --pack "More languages" --speech "" --timing de,es,fr,it
+
+An add-on pack holds only models (no engine code or shared data); the engine
+merges every *.pak found next to engine.pak.
 
 <models_stage_dir> is the output of fetch_models.py (contains models/).
 Large entries are stored uncompressed so the engine reads them in place.
@@ -10,6 +16,7 @@ Must run with CPython 3.11 (the bytecode is precompiled for the runtime).
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import io
 import json
@@ -49,13 +56,24 @@ def timing_weights_fp16(model_dir: Path, info: dict) -> bytes:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("stage")
+    ap.add_argument("out")
+    ap.add_argument("--speech", default="fast,accurate", help="quality levels to include")
+    ap.add_argument("--timing", default=None, help="word-timing languages to include (default: all)")
+    ap.add_argument("--pack", help="build an add-on pack with this name (models only)")
+    args = ap.parse_args()
     if sys.version_info[:2] != (3, 11):
         raise SystemExit("make_pak.py must run on CPython 3.11 (bytecode is precompiled for the runtime)")
-    stage = Path(sys.argv[1]) / "models"
-    out = Path(sys.argv[2])
+    stage = Path(args.stage) / "models"
+    out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    want_speech = [x for x in args.speech.split(",") if x]
+    want_timing = None if args.timing is None else [x for x in args.timing.split(",") if x]
     entries: dict[str, dict] = {}
     registry: dict = {"engineVersion": __version__, "speech": {}, "timing": {}, "notices": {}}
+    if args.pack:
+        registry["pack"] = args.pack
     tmp = out.with_suffix(".tmp")
 
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED, allowZip64=True) as z:
@@ -65,16 +83,19 @@ def main() -> int:
                 entries[name] = {"sha256": sha256(data), "size": len(data)}
 
         # engine code: sources + legacy-location bytecode that zipimport can use
-        with tempfile.TemporaryDirectory() as td:
-            for src in sorted((REPO / "backend" / "autocaption").glob("*.py")):
-                data = src.read_bytes()
-                put(f"app/autocaption/{src.name}", data, track=False)
-                pyc = Path(td) / (src.stem + ".pyc")
-                py_compile.compile(str(src), cfile=str(pyc), dfile=f"autocaption/{src.name}", doraise=True,
-                                   invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
-                put(f"app/autocaption/{src.stem}.pyc", pyc.read_bytes(), track=False)
+        if not args.pack:
+            with tempfile.TemporaryDirectory() as td:
+                for src in sorted((REPO / "backend" / "autocaption").glob("*.py")):
+                    data = src.read_bytes()
+                    put(f"app/autocaption/{src.name}", data, track=False)
+                    pyc = Path(td) / (src.stem + ".pyc")
+                    py_compile.compile(str(src), cfile=str(pyc), dfile=f"autocaption/{src.name}", doraise=True,
+                                       invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
+                    put(f"app/autocaption/{src.stem}.pyc", pyc.read_bytes(), track=False)
 
         for key, spec in SPEECH.items():
+            if key not in want_speech:
+                continue
             src = stage / spec["src"]
             info = json.loads((src / "model_info.json").read_text())
             prefix = f"models/speech/{key}/"
@@ -86,6 +107,8 @@ def main() -> int:
             print(f"speech/{key}: {sum(entries[n]['size'] for n in entries if n.startswith(prefix)) / 1e6:.0f} MB")
 
         for lang_dir in sorted((stage / "align").iterdir()):
+            if want_timing is not None and lang_dir.name not in want_timing:
+                continue
             info = json.loads((lang_dir / "model_info.json").read_text())
             entry = f"models/timing/{lang_dir.name}/weights.pt"
             data = timing_weights_fp16(lang_dir, info)
@@ -95,22 +118,23 @@ def main() -> int:
             registry["notices"][f"timing/{lang_dir.name}"] = {"source": info.get("source"), "license": info.get("license")}
             print(f"timing/{lang_dir.name}: {len(data) / 1e6:.0f} MB (half precision)")
 
-        vad = stage / "vad"
-        put("models/vad/pytorch_model.bin", (vad / "pytorch_model.bin").read_bytes())
-        registry["vad"] = {"prefix": "models/vad/"}
-        registry["notices"]["vad"] = json.loads((vad / "model_info.json").read_text()).get("license")
+        if not args.pack:
+            vad = stage / "vad"
+            put("models/vad/pytorch_model.bin", (vad / "pytorch_model.bin").read_bytes())
+            registry["vad"] = {"prefix": "models/vad/"}
+            registry["notices"]["vad"] = json.loads((vad / "model_info.json").read_text()).get("license")
 
-        for f in sorted((stage / "nltk").rglob("*")):
-            if f.is_file():
-                put("data/nltk/" + f.relative_to(stage / "nltk").as_posix(), f.read_bytes())
-        registry["nltk"] = {"prefix": "data/nltk/"}
+            for f in sorted((stage / "nltk").rglob("*")):
+                if f.is_file():
+                    put("data/nltk/" + f.relative_to(stage / "nltk").as_posix(), f.read_bytes())
+            registry["nltk"] = {"prefix": "data/nltk/"}
 
-        put("data/selftest.wav", (REPO / "backend" / "selftest" / "selftest.wav").read_bytes())
-        registry["selftest"] = "data/selftest.wav"
+            put("data/selftest.wav", (REPO / "backend" / "selftest" / "selftest.wav").read_bytes())
+            registry["selftest"] = "data/selftest.wav"
         registry["entries"] = entries
         put("registry.json", json.dumps(registry, indent=1).encode(), track=False)
     tmp.replace(out)
-    print(f"engine.pak: {out.stat().st_size / 1e9:.2f} GB, {len(entries)} verified entries")
+    print(f"{out.name}: {out.stat().st_size / 1e9:.2f} GB, {len(entries)} verified entries")
     return 0
 
 

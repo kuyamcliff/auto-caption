@@ -17,6 +17,7 @@ import traceback
 
 from . import __version__, integrity, paths
 
+NOT_INCLUDED_ACCURATE = "Not included. Add the Accurate quality pack to use it."
 EXPECTED = "the quick brown fox jumps over the lazy dog".split()
 log = logging.getLogger("autocaption.selftest")
 
@@ -149,6 +150,8 @@ def main(argv: list[str]) -> int:
 
             eng = make_engine()
             if model not in eng.registry.whisper:
+                if model == "accurate":
+                    return "info", NOT_INCLUDED_ACCURATE, None
                 return "fail", "Not installed. Copy a fresh engine folder from the download.", None
             res = eng.transcribe(ctx["audio"], Options(model=model, language=language, device=device),
                                  lambda *a: None, lambda: False)
@@ -167,7 +170,7 @@ def main(argv: list[str]) -> int:
 
         eng = make_engine()
         if "accurate" not in eng.registry.whisper:
-            return "fail", "Not installed. Copy a fresh engine folder from the download.", None
+            return "info", NOT_INCLUDED_ACCURATE, None
         pak = eng.registry.pak
         prefix = eng.registry.whisper["accurate"].info["prefix"]
         WhisperModel("accurate", device="cpu", compute_type="int8", local_files_only=True,
@@ -186,6 +189,8 @@ def main(argv: list[str]) -> int:
     def timing_other():
         eng = make_engine()
         langs = sorted(k for k in eng.registry.align if k != "en")
+        if not langs:
+            return "info", "Not included. Add the More languages pack for French, German, Spanish and Italian.", None
         res = eng.registry.pak.verify("models/timing/")
         if not res["ok"]:
             return "fail", "Some language files are damaged. Copy a fresh engine folder from the download.", None
@@ -219,7 +224,8 @@ def main(argv: list[str]) -> int:
         if "audio" in ctx:
             r.run("speech-fast", "Fast transcription", transcribe_check("fast", "cpu"))
             r.run("speech-accurate", "Accurate transcription",
-                  accurate_load if quick else transcribe_check("accurate", "cpu", "en"))
+                  accurate_load if quick else transcribe_check("accurate", "cpu", "en"),
+                  required="registry" in ctx and "accurate" in ctx["registry"].whisper)  # optional pack in the lite build
             r.run("timing-en", "Word timing (English)", timing_en)
         r.run("timing-other", "Word timing (other languages)", timing_other, required=False)
         r.run("gpu", "Graphics acceleration", gpu, required=False)

@@ -1,0 +1,50 @@
+AUTOCAPTION AE 1.0.0 (LITE)
+Made by cyriqvfx
+
+This is the small download. It uses the Python already installed on your
+PC instead of bringing its own, so it is about 360 MB instead of 4.3 GB.
+It includes Fast quality and precise word timing for English. Accurate
+quality and more languages are optional add-on packs (see below).
+
+You need
+
+- Windows 10 or 11 (64-bit) and After Effects 2022 (22.0) or newer
+- 64-bit Python 3.11, 3.12 or 3.13 from python.org
+- An internet connection once, for setup (about 1 GB download)
+- About 5 GB of free disk space for setup (the engine environment is about 4 GB)
+
+Getting started
+
+1. Keep this folder somewhere permanent, for example C:\Tools\AutoCaptionAE.
+2. Open the "AutoCaption Engine" folder and double-click "Set Up Engine.bat".
+   It creates the engine's own private environment inside that folder and
+   downloads the libraries it needs. Your Python installation and your
+   other projects are not changed. This takes a few minutes, once.
+   If you have an NVIDIA graphics card, setup offers to add graphics card
+   support (about 2 GB more). Say no to keep it small; the processor works.
+3. Double-click "Install AutoCaption.bat".
+4. Open (or restart) After Effects, then Window > Extensions > AutoCaption AE.
+5. Click "Check Engine". When everything is ready, click Start Captioning.
+6. Select an audio, video or precomp layer and click Transcribe.
+
+Add-on packs (optional)
+
+- "Accurate quality.pak" (about 490 MB): adds Accurate quality.
+- "More languages.pak" (about 760 MB): precise word timing for French,
+  German, Spanish and Italian.
+Put a pack file inside the "AutoCaption Engine" folder (next to engine.pak),
+then click Check Engine in the panel. Without the packs, other languages
+still transcribe with estimated word timing.
+
+Good to know
+
+- After setup everything runs on this computer. Your audio never leaves it.
+- "AutoCaption Engine.exe" only runs when the panel starts it.
+- Setup can be run again at any time to repair the engine.
+- Moved the folder? Run "Set Up Engine.bat" again, then use the panel's
+  Settings > Engine > Choose Engine Folder.
+
+Need help?
+
+Open Settings > Diagnostics in the panel and click "Copy diagnostics".
+Licenses of components are in "AutoCaption Engine\Third-party notices.txt".

@@ -50,6 +50,15 @@ def ffmpeg_exe() -> Path | None:
         p = bin_dir() / name
         if p.is_file():
             return p
+    # Lite engine: the decoder comes with the engine's own environment (bin/venv).
+    try:
+        import imageio_ffmpeg
+
+        exe = Path(imageio_ffmpeg.get_ffmpeg_exe())
+        if exe.is_file():
+            return exe
+    except Exception:  # noqa: BLE001 - not installed (full build) or no binary
+        pass
     if os.environ.get("AUTOCAPTION_DEV") == "1":
         # Development convenience only; packaged builds never look at PATH.
         import shutil
@@ -111,11 +120,21 @@ def configure_offline_environment() -> None:
     if ff is not None:
         os.environ["PATH"] = str(ff.parent) + os.pathsep + os.environ.get("PATH", "")
     if sys.platform == "win32":
-        # Graphics-acceleration runtime DLLs ship in bin/cuda.
-        cuda = bin_dir() / "cuda"
-        if cuda.is_dir():
-            os.environ["PATH"] = str(cuda) + os.pathsep + os.environ["PATH"]
-            try:
-                os.add_dll_directory(str(cuda))
-            except (AttributeError, OSError):
-                pass
+        # Graphics-acceleration runtime DLLs: bin/cuda in the full build; in the
+        # lite build the optional GPU step installs them into bin/venv (nvidia/*/bin).
+        dirs = [bin_dir() / "cuda"]
+        try:
+            import importlib.util
+
+            spec = importlib.util.find_spec("nvidia")
+            for root in (spec.submodule_search_locations or []) if spec else []:
+                dirs += sorted(Path(root).glob("*/bin"))
+        except (ImportError, ValueError):
+            pass
+        for cuda in dirs:
+            if cuda.is_dir():
+                os.environ["PATH"] = str(cuda) + os.pathsep + os.environ["PATH"]
+                try:
+                    os.add_dll_directory(str(cuda))
+                except (AttributeError, OSError):
+                    pass

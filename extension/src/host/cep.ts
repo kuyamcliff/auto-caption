@@ -257,7 +257,8 @@ function makeBackend(files: Files): BackendProcess {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
-            reject(Object.assign(new Error("The engine stopped while starting."), { code: "ENGINE_EXIT", detail: stderr.slice(-2000) }));
+            // 93: lite engine whose setup has not been run yet (see launcher.c)
+            reject(Object.assign(new Error("The engine stopped while starting."), { code: code === 93 ? "ENGINE_NOT_SET_UP" : "ENGINE_EXIT", detail: stderr.slice(-2000) }));
           }
           exitHandlers.forEach((h) => h(code));
         });
@@ -304,7 +305,7 @@ function makeBackend(files: Files): BackendProcess {
         proc.on("error", (e: Error) => reject(Object.assign(e, { code: "ENGINE_SPAWN", detail: e.message })));
         proc.on("exit", (code: number | null) => {
           if (summary) resolve(summary);
-          else reject(Object.assign(new Error(`The engine check stopped unexpectedly (exit ${code}).`), { code: "SELFTEST_CRASH", detail: stderr.slice(-3000) }));
+          else reject(Object.assign(new Error(`The engine check stopped unexpectedly (exit ${code}).`), { code: code === 93 ? "ENGINE_NOT_SET_UP" : "SELFTEST_CRASH", detail: stderr.slice(-3000) }));
         });
       });
     },

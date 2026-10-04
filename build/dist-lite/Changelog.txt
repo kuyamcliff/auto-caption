@@ -1,0 +1,22 @@
+AutoCaption AE changelog
+
+1.0.0
+
+First release. Made by cyriqvfx.
+
+- After Effects panel with a caption engine that runs fully on this computer.
+- Transcribes the selected audio, video or precomp layer exactly as the
+  composition plays it (start time, trims, stretch, time remap, nesting).
+- Two quality levels: Fast and Accurate.
+- Word-accurate timing for English, French, German, Spanish and Italian;
+  every word shows where its timing came from (precise, estimated or edited).
+- Caption editor: edit, split, merge, delete, caption and word timing, search,
+  undo and redo, reset to the original transcript.
+- Natural caption breaks and balanced two-line captions; changing words per
+  line regroups instantly without transcribing again.
+- 10 animation presets with a live preview at real word timings.
+- Style editor and saved presets.
+- Export JSON, SRT, VTT, ASS and TXT. Import JSON, SRT and VTT, and align
+  imported subtitles to the audio.
+- Engine check, file integrity check, diagnostics and logs.
+- No telemetry, no analytics, no internet access.

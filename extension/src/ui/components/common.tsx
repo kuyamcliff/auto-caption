@@ -5,11 +5,11 @@ import { Icon } from "../icons";
 import type { ErrorAction, FriendlyError } from "../errors";
 import { getStore, useStore } from "../store";
 
-export function Seg<T extends string | number>(props: { value: T; options: { value: T; label: string; title?: string }[]; onChange: (v: T) => void; full?: boolean; label: string }) {
+export function Seg<T extends string | number>(props: { value: T; options: { value: T; label: string; title?: string; disabled?: boolean }[]; onChange: (v: T) => void; full?: boolean; label: string }) {
   return (
     <div class={`seg${props.full ? " full" : ""}`} role="group" aria-label={props.label}>
       {props.options.map((o) => (
-        <button type="button" key={String(o.value)} aria-pressed={o.value === props.value} title={o.title} onClick={() => props.onChange(o.value)}>
+        <button type="button" key={String(o.value)} aria-pressed={o.value === props.value} title={o.title} disabled={o.disabled} onClick={() => props.onChange(o.value)}>
           {o.label}
         </button>
       ))}
@@ -254,6 +254,7 @@ export function Toasts() {
 const ACTION_LABEL: Record<ErrorAction, string> = {
   verify: "Check Engine", retry: "Try Again", locate: "Choose Engine Folder", start: "Start Engine",
   language: "Choose Language", select: "OK", details: "View technical details", cpu: "Use Processor",
+  openfolder: "Open Engine Folder",
 };
 
 export function ErrorCard(props: { error: FriendlyError; onAction: (a: ErrorAction) => unknown; onClose?: () => void }) {
@@ -275,7 +276,8 @@ export function ErrorCard(props: { error: FriendlyError; onAction: (a: ErrorActi
         </div>
         <div class="row row-wrap" style={{ gap: 6 }}>
           {e.actions.filter((a) => a !== "details").map((a, i) => (
-            <AsyncButton key={a} class={i === 0 ? "btn btn-primary" : "btn"} onClick={() => props.onAction(a)}>{ACTION_LABEL[a]}</AsyncButton>
+            <AsyncButton key={a} class={i === 0 ? "btn btn-primary" : "btn"}
+              onClick={() => (a === "openfolder" && store.state.config.backendDir ? store.f.reveal(store.state.config.backendDir) : props.onAction(a))}>{ACTION_LABEL[a]}</AsyncButton>
           ))}
           {e.actions.includes("details") ? (
             <button type="button" class="btn btn-ghost" aria-expanded={details} onClick={() => setDetails(!details)}>{details ? "Hide details" : ACTION_LABEL.details}</button>

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .pak import Pak, engine_pak
+from .pak import PakSet, engine_pak
 
 # Human readable names for the language picker / warnings.
 LANGUAGE_NAMES = {
@@ -37,7 +37,7 @@ class ModelEntry:
 
 
 class Registry:
-    def __init__(self, pak: Pak | None = None):
+    def __init__(self, pak: PakSet | None = None):
         self.pak = pak or engine_pak()
         reg = self.pak.registry
         self.whisper: dict[str, ModelEntry] = {

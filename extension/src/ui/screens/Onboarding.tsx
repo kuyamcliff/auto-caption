@@ -27,7 +27,7 @@ function StatusCell({ row, running }: { row?: SelfTestRow; running: boolean }) {
     case "pass":
       return <span class="st pass">{Icon.check({ size: 14 })} Ready</span>;
     case "info":
-      return <span class="st">{Icon.info({ size: 14 })} {row.check === "gpu" ? "Not available" : "Info"}</span>;
+      return <span class="st">{Icon.info({ size: 14 })} {row.check === "gpu" ? "Not available" : "Not included"}</span>;
     case "warn":
       return <span class="st warn">{Icon.alert({ size: 14 })} Limited</span>;
     default:
@@ -48,6 +48,7 @@ export function VerifyList(props: { showDetails?: boolean }) {
               {r.label}
               {props.showDetails && row?.detail ? <div class="faint small">{row.detail}</div> : null}
               {!props.showDetails && row?.check === "gpu" && row.status === "info" ? <div class="faint small">Your processor will be used.</div>
+                : !props.showDetails && row?.status === "info" && row.detail ? <div class="faint small">{row.detail}</div>
                 : !props.showDetails && row && (row.status === "fail" || row.status === "warn") && row.detail ? <div class="faint small">{row.detail}</div> : null}
             </span>
             <StatusCell row={row} running={v.running} />

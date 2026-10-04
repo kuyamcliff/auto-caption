@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import os from "node:os";
 
 const stage = resolve(process.argv[2]);
+const LITE = process.env.LITE === "1"; // lite engine folder without add-on packs
 const shots = resolve(process.argv[3] || "/tmp/ui-shots");
 const repo = resolve(new URL("../../..", import.meta.url).pathname);
 const fixture = join(repo, "tests/fixtures/audio/clean_english.wav");
@@ -68,12 +69,14 @@ try {
   await page.getByText("Everything is ready.").waitFor({ timeout: 180000 });
   await shot("03-verified");
   const rows = await page.locator(".checks li").allInnerTexts();
-  check("verification rows all ready (GPU may be n/a)", rows.every((r) => /Ready|Not available/.test(r)), rows.map((r) => r.replace(/\n/g, " ")).join(" | "));
+  check("verification rows all ready (GPU may be n/a)", rows.every((r) => (LITE ? /Ready|Not available|Not included/ : /Ready|Not available/).test(r)), rows.map((r) => r.replace(/\n/g, " ")).join(" | "));
 
   await page.getByRole("button", { name: "Start Captioning" }).click();
   await page.getByText("Select an audio, video, or precomp layer in After Effects to get started.").waitFor();
   await page.getByText("Ready", { exact: true }).waitFor({ timeout: 60000 });
   check("quality choices are Fast and Accurate", (await page.getByRole("group", { name: "Quality" }).innerText()).replace(/\s+/g, " ").trim() === "Fast Accurate");
+  const accurateDisabled = await page.getByRole("group", { name: "Quality" }).getByRole("button", { name: "Accurate" }).isDisabled();
+  check(LITE ? "lite: Accurate shown but disabled until its pack is added" : "Accurate is selectable", LITE ? accurateDisabled : !accurateDisabled);
   await shot("04-empty-state");
   check("empty state message", true);
   check("transcribe disabled without selection", await page.getByRole("button", { name: "Transcribe" }).isDisabled());

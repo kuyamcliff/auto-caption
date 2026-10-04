@@ -65,11 +65,20 @@ int wmain(int argc, wchar_t **argv) {
     if (!GetModuleFileNameW(NULL, exe, MAX_PATH)) { fail(L"cannot resolve own path"); return 90; }
     wcscpy(dir, exe);
     PathRemoveFileSpecW(dir);
-    swprintf(python, MAX_PATH, L"%ls\\bin\\python.exe", dir);
     swprintf(pak, MAX_PATH, L"%ls\\engine.pak", dir);
-    if (GetFileAttributesW(python) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(pak) == INVALID_FILE_ATTRIBUTES) {
+    if (GetFileAttributesW(pak) == INVALID_FILE_ATTRIBUTES) {
         fwprintf(stderr, L"AutoCaption Engine: engine files are missing in %ls\n", dir);
         return 91;
+    }
+    /* Full build: bundled runtime in bin\. Lite build: the environment that
+       "Set Up Engine.bat" creates in bin\venv from the user's own Python. */
+    swprintf(python, MAX_PATH, L"%ls\\bin\\python.exe", dir);
+    if (GetFileAttributesW(python) == INVALID_FILE_ATTRIBUTES) {
+        swprintf(python, MAX_PATH, L"%ls\\bin\\venv\\Scripts\\python.exe", dir);
+        if (GetFileAttributesW(python) == INVALID_FILE_ATTRIBUTES) {
+            fwprintf(stderr, L"AutoCaption Engine: not set up yet. Run \"Set Up Engine.bat\" in %ls\n", dir);
+            return 93;
+        }
     }
 
     /* command line: "python.exe" -X utf8 -I -m autocaption <args after --panel> */

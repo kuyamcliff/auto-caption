@@ -6,7 +6,7 @@ import { Preview } from "../components/Preview";
 import { StylePanel } from "../components/StylePanel";
 import type { ErrorAction } from "../errors";
 import { Icon } from "../icons";
-import { getStore, qualityLabel, useStore, type JobState, type RecentEntry } from "../store";
+import { getStore, PACK_LANGUAGES, qualityLabel, qualityOptions, useStore, type JobState, type RecentEntry } from "../store";
 import { Credit } from "./Onboarding";
 
 const LANG_FALLBACK = [
@@ -144,15 +144,16 @@ function TranscribeCard() {
   const running = job.phase === "extracting" || job.phase === "running";
   const langs = models?.languages ?? LANG_FALLBACK.map(([code, name]) => ({ code, name, aligned: ["en", "es", "fr", "de", "it"].includes(code) }));
   const chosen = langs.find((l) => l.code === language);
-  const modelList = models?.quality?.length ? models.quality : [{ id: "fast", label: "Fast", description: "Quickest results" }, { id: "accurate", label: "Accurate", description: "Best for difficult audio" }];
-  const desc = modelList.find((m) => m.id === model)?.description;
+  const modelList = qualityOptions(models);
+  const usable = modelList.find((m) => m.id === model && !m.missing) ? model : "fast";
+  const desc = modelList.find((m) => m.id === usable)?.description;
 
   const onAction = (a: ErrorAction) => {
-    if (a === "retry") store.transcribe({ model, language });
+    if (a === "retry") store.transcribe({ model: usable, language });
     else if (a === "verify") { store.set({ screen: "settings", settingsTab: "engine" }); return store.runVerify(true); }
     else if (a === "locate") return store.locateAndConnect();
     else if (a === "language") { store.dismissJob(); document.getElementById("lang")?.focus(); }
-    else if (a === "cpu") { store.saveConfig({ device: "cpu" }); store.transcribe({ model, language }); }
+    else if (a === "cpu") { store.saveConfig({ device: "cpu" }); store.transcribe({ model: usable, language }); }
     else store.dismissJob();
     return undefined;
   };
@@ -165,8 +166,8 @@ function TranscribeCard() {
           <div class="grid2">
             <div class="field">
               <label>Quality</label>
-              <Seg label="Quality" full value={model} onChange={(v) => { setModel(v); store.saveConfig({ defaultModel: v }); }}
-                options={modelList.map((m) => ({ value: m.id, label: m.label, title: m.description }))} />
+              <Seg label="Quality" full value={usable} onChange={(v) => { setModel(v); store.saveConfig({ defaultModel: v }); }}
+                options={modelList.map((m) => ({ value: m.id, label: m.label, title: m.description, disabled: m.missing }))} />
               <span class="faint small">{desc}</span>
             </div>
             <div class="field">
@@ -175,12 +176,12 @@ function TranscribeCard() {
                 <option value="auto">Auto Detect</option>
                 {langs.map((l) => <option value={l.code} key={l.code}>{l.name}</option>)}
               </select>
-              <span class="faint small">{language === "auto" ? "Detected from the audio" : chosen?.aligned ? "Precise word timing" : "Estimated word timing"}</span>
+              <span class="faint small">{language === "auto" ? "Detected from the audio" : chosen?.aligned ? "Precise word timing" : PACK_LANGUAGES.includes(language) ? "Estimated timing. The More languages pack adds precise timing." : "Estimated word timing"}</span>
             </div>
           </div>
           {job.phase === "failed" && job.error ? <ErrorCard error={job.error} onAction={onAction} onClose={() => store.dismissJob()} /> : null}
           {job.phase === "cancelled" ? <Notice kind="info" onClose={() => store.dismissJob()}>Transcription cancelled. Temporary files were removed.</Notice> : null}
-          <button class="btn btn-primary btn-lg btn-block" disabled={sel.status !== "ready" || backend === "starting"} onClick={() => store.transcribe({ model, language })}>
+          <button class="btn btn-primary btn-lg btn-block" disabled={sel.status !== "ready" || backend === "starting"} onClick={() => store.transcribe({ model: usable, language })}>
             {backend === "starting" ? <><span class="spinner" aria-hidden="true" /> Starting engine…</> : <>{Icon.wave()} Transcribe</>}
           </button>
         </>
