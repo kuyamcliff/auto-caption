@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HotDrop</title>
+<style>
+:root{
+  --bg:#f5f6fa; --card:#fff; --text:#16181d; --muted:#6b7280; --line:#e5e7eb;
+  --accent:#ff5a1f; --accent-soft:#fff1eb; --ok:#16a34a; --bad:#dc2626; --bar:#eef0f4;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#111317; --card:#1a1d23; --text:#eef0f4; --muted:#9aa1ad; --line:#2a2e36;
+  --accent:#ff7043; --accent-soft:#2a1d17; --ok:#22c55e; --bad:#f87171; --bar:#262a31;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:12px;padding:18px 24px}
+.logo{width:34px;height:34px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:700}
+h1{font-size:19px;margin:0;font-weight:650}
+.pill{margin-left:auto;display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:14px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.pill.on .dot{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 25%,transparent)}
+.pill.off .dot{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.25}}
+main{flex:1;overflow:auto;padding:0 24px 16px;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:10px}
+.step{display:flex;gap:10px;align-items:flex-start;color:var(--muted);font-size:14px}
+.step b{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:13px}
+.manual{display:flex;gap:8px;margin-top:14px;align-items:center;font-size:13px;color:var(--muted)}
+.manual input{flex:0 1 220px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+#drop{border:2px dashed var(--line);border-radius:18px;padding:38px 20px;text-align:center;cursor:pointer;transition:.15s;background:var(--card)}
+#drop:hover,#drop.over{border-color:var(--accent);background:var(--accent-soft)}
+#drop .big{font-size:20px;font-weight:600;margin:10px 0 4px}
+#drop .sub{color:var(--muted);font-size:14px}
+#drop svg{color:var(--accent)}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);padding:7px 14px;border-radius:9px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.listhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.listhead h2{font-size:15px;margin:0}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.row{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row.click{cursor:pointer}
+.row.click:hover .name{color:var(--accent)}
+.arrow{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-weight:700}
+.name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.meta{font-size:12.5px;color:var(--muted)}
+.bar{height:5px;border-radius:9px;background:var(--bar);overflow:hidden;margin:5px 0 3px}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .25s}
+.row.done .bar i{background:var(--ok)}
+.row.failed .bar i{background:var(--bad)}
+.state{font-size:13px;color:var(--muted);text-align:right;white-space:nowrap}
+.row.done .state{color:var(--ok)} .row.failed .state{color:var(--bad)}
+footer{padding:12px 24px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+footer span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gone{display:none;position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 92%,transparent);place-items:center;text-align:center;font-size:16px}
+@media (max-width:640px){.steps{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">⇅</div><h1>HotDrop</h1>
+  <div id="pill" class="pill off"><span class="dot"></span><span id="pilltext">Looking for your phone…</span></div>
+</header>
+<main>
+  <section id="help" class="card">
+    <strong>Connect in 3 steps</strong>
+    <div class="steps">
+      <div class="step"><b>1</b><span>Turn on <strong>Hotspot</strong> on your phone</span></div>
+      <div class="step"><b>2</b><span>Connect this PC's <strong>Wi-Fi</strong> to that hotspot</span></div>
+      <div class="step"><b>3</b><span>Open <strong>HotDrop</strong> on your phone — it connects by itself</span></div>
+    </div>
+    <div class="manual">Not finding it? Type the address shown on your phone:
+      <input id="addr" placeholder="e.g. 192.168.43.1"><button id="go">Connect</button><span id="addrmsg"></span></div>
+  </section>
+
+  <section id="drop">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    <div class="big">Drop files or folders here to send to your phone</div>
+    <div class="sub">or click to choose files · files your phone sends arrive automatically</div>
+    <input id="pick" type="file" multiple hidden>
+  </section>
+
+  <section class="card">
+    <div class="listhead"><h2>Transfers</h2><button id="clear">Clear finished</button></div>
+    <div id="list"><div class="empty">Nothing yet.</div></div>
+  </section>
+</main>
+<footer><span id="savedir">Received files are saved to Downloads\HotDrop</span><button id="open" class="primary">Open received folder</button></footer>
+<div id="gone"><div><strong>HotDrop was closed.</strong><br>Start HotDrop again to keep transferring.</div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const H = {'X-HotDrop':'1'};
+const MAX_PARALLEL = 3;
+let state = {phone:null, transfers:[]};
+const queue = [];          // {cid, file}
+const local = new Map();   // cid -> {name,size,status,error,file}
+let active = 0;
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fmt(n){ if(n<0) return '?'; const u=['B','KB','MB','GB','TB']; let i=0; while(n>=1024&&i<4){n/=1024;i++} return (i?n.toFixed(n<10?2:n<100?1:0):n)+' '+u[i]; }
+function eta(s){ if(!isFinite(s)||s<0) return ''; s=Math.round(s); return s<60? s+'s left' : Math.floor(s/60)+'m '+(s%60)+'s left'; }
+const cidGen = () => Math.random().toString(36).slice(2,10)+Date.now().toString(36);
+
+let lostTimer = null;
+const es = new EventSource('/api/events');
+es.onmessage = e => { clearTimeout(lostTimer); lostTimer=null; $('#gone').style.display='none'; state = JSON.parse(e.data); render(); pump(); };
+es.onerror = () => { if(!lostTimer) lostTimer = setTimeout(()=>$('#gone').style.display='grid', 4000); };
+
+function addFiles(files){
+  for(const f of files){ const cid=cidGen(); local.set(cid,{name:f.name,size:f.size,status:'queued',file:f}); queue.push({cid,file:f}); }
+  render(); pump();
+}
+function pump(){
+  while(state.phone && active<MAX_PARALLEL && queue.length){
+    const job = queue.shift(); active++;
+    send(job).finally(()=>{ active--; pump(); });
+  }
+}
+async function send({cid,file}){
+  const l = local.get(cid); if(!l) return;
+  l.status='sending'; l.error='';
+  try{
+    const r = await fetch(`/api/send?cid=${cid}&size=${file.size}&name=${encodeURIComponent(file.name)}`, {method:'PUT', headers:H, body:file});
+    if(!r.ok) throw new Error((await r.text()).trim() || r.statusText);
+    local.delete(cid);
+  }catch(e){ l.status='failed'; l.error=e.message; }
+  render();
+}
+function retry(cid){ const l=local.get(cid); if(!l||!l.file) return; l.status='queued'; queue.push({cid,file:l.file}); render(); pump(); }
+
+function render(){
+  const p = state.phone;
+  $('#pill').className = 'pill ' + (p?'on':'off');
+  $('#pilltext').textContent = p ? 'Connected to ' + p.name : 'Looking for your phone…';
+  $('#help').style.display = p ? 'none' : '';
+  if(state.saveDir) $('#savedir').textContent = 'Received files are saved to ' + state.saveDir;
+
+  const server = new Map(state.transfers.map(t=>[t.id,t]));
+  const rows = [];
+  // queued-but-not-started local items first (newest on top)
+  for(const [cid,l] of [...local].reverse()){
+    if(server.has(cid) && l.status!=='failed') continue;
+    if(server.has(cid) && server.get(cid).status==='active') continue;
+    rows.push({id:cid, name:l.name, size:l.size, done:0, toPhone:true, status:l.status==='failed'?'failed':'queued', error:l.error, localOnly:true});
+  }
+  for(const t of state.transfers){ if(rows.some(r=>r.id===t.id)) continue; rows.push(t); }
+
+  if(!rows.length){ $('#list').innerHTML='<div class="empty">Nothing yet.</div>'; return; }
+  $('#list').innerHTML = rows.map(t=>{
+    const pct = t.size>0 ? Math.min(100, t.done/t.size*100) : (t.status==='done'?100:0);
+    let st, meta;
+    if(t.status==='queued'){ st = p ? 'Starting…' : 'Waiting for phone'; meta = fmt(t.size); }
+    else if(t.status==='active'){ st = Math.round(pct)+'%'; meta = `${fmt(t.done)} of ${fmt(t.size)} · ${fmt(t.speed)}/s · ${eta((t.size-t.done)/t.speed)}`; }
+    else if(t.status==='done'){ st = t.toPhone ? 'Sent ✓' : 'Received ✓'; meta = fmt(t.size<0?t.done:t.size) + (t.speed>0?` · avg ${fmt(t.speed)}/s`:'') + (!t.toPhone&&t.hasFile?' · click to show in folder':''); }
+    else { st = 'Failed'; meta = esc(t.error||'') + (t.toPhone ? (local.has(t.id)?' · click to retry':'') : ' · tap it on your phone to retry'); }
+    const click = (t.status==='done'&&!t.toPhone&&t.hasFile) || (t.status==='failed'&&local.has(t.id));
+    return `<div class="row ${t.status} ${click?'click':''}" data-id="${esc(t.id)}" data-act="${t.status==='failed'?'retry':'reveal'}">
+      <div class="arrow" title="${t.toPhone?'PC → phone':'phone → PC'}">${t.toPhone?'↑':'↓'}</div>
+      <div style="min-width:0"><div class="name">${esc(t.name)}</div><div class="bar"><i style="width:${pct}%"></i></div><div class="meta">${meta}</div></div>
+      <div class="state">${st}</div></div>`;
+  }).join('');
+}
+
+$('#list').addEventListener('click', e=>{
+  const row = e.target.closest('.row.click'); if(!row) return;
+  if(row.dataset.act==='retry') retry(row.dataset.id);
+  else fetch('/api/reveal?id='+encodeURIComponent(row.dataset.id),{method:'POST',headers:H});
+});
+
+// drag & drop, including whole folders
+async function filesFromDrop(dt){
+  const entries = [...dt.items].map(i=>i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if(!entries.length) return [...dt.files];
+  const out = [];
+  async function walk(en){
+    if(en.isFile) out.push(await new Promise((res,rej)=>en.file(res,rej)));
+    else if(en.isDirectory){
+      const rd = en.createReader(); let batch;
+      do{ batch = await new Promise((res,rej)=>rd.readEntries(res,rej)); for(const c of batch) await walk(c); }while(batch.length);
+    }
+  }
+  for(const en of entries) await walk(en);
+  return out;
+}
+const drop = $('#drop');
+['dragenter','dragover'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault(); drop.classList.add('over');}));
+['dragleave','dragend'].forEach(ev=>window.addEventListener(ev,e=>{ if(!e.relatedTarget) drop.classList.remove('over'); }));
+window.addEventListener('drop', async e=>{ e.preventDefault(); drop.classList.remove('over'); addFiles(await filesFromDrop(e.dataTransfer)); });
+drop.addEventListener('click', ()=>$('#pick').click());
+$('#pick').addEventListener('change', e=>{ addFiles([...e.target.files]); e.target.value=''; });
+
+$('#clear').onclick = ()=>{ for(const [cid,l] of local) if(l.status==='failed') local.delete(cid); fetch('/api/clear',{method:'POST',headers:H}); render(); };
+$('#open').onclick = ()=>fetch('/api/open-folder',{method:'POST',headers:H});
+$('#go').onclick = async ()=>{
+  $('#addrmsg').textContent='Connecting…';
+  const r = await fetch('/api/connect',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify({addr:$('#addr').value})});
+  $('#addrmsg').textContent = r.ok ? 'Connected!' : (await r.text());
+};
+$('#addr').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#go').click(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp" android:background="@drawable/card"
+    android:gravity="center_vertical" android:orientation="horizontal"
+    android:paddingStart="12dp" android:paddingEnd="14dp" android:paddingTop="12dp" android:paddingBottom="12dp">
+    <TextView android:id="@+id/arrow" android:layout_width="32dp" android:layout_height="32dp"
+        android:background="@drawable/arrow_bg" android:gravity="center"
+        android:textColor="@color/accent" android:textSize="16sp" android:textStyle="bold" />
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="wrap_content" android:layout_marginStart="12dp"
+        android:layout_marginEnd="10dp" android:orientation="vertical">
+        <TextView android:id="@+id/name" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:ellipsize="middle" android:singleLine="true"
+            android:textColor="@color/text" android:textSize="15sp" />
+        <ProgressBar android:id="@+id/bar" style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent" android:layout_height="5dp"
+            android:layout_marginTop="6dp" android:layout_marginBottom="4dp"
+            android:max="1000" android:progressDrawable="@drawable/progress" />
+        <TextView android:id="@+id/meta" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="@color/muted" android:textSize="12sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/state" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:textSize="13sp" />
+</LinearLayout>

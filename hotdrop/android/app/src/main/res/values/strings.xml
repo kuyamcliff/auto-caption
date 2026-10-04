@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">HotDrop</string>
+    <string name="notif_title">HotDrop is ready</string>
+    <string name="notif_text">Your PC can send and receive files. Tap to open.</string>
+    <string name="stop">Stop</string>
+    <string name="waiting">Waiting for your PC…</string>
+    <string name="connected_to">Connected to %1$s</string>
+    <string name="connected_hint">Send from here, or drop files in the HotDrop window on your PC.</string>
+    <string name="manual_hint">PC not finding this phone? Type %1$s in the PC app.</string>
+    <string name="no_network">Turn on your hotspot, then connect your PC to it.</string>
+    <string name="step1">1. Turn on Hotspot on this phone</string>
+    <string name="step2">2. Connect your PC\'s Wi-Fi to it</string>
+    <string name="step3">3. Open HotDrop on the PC. It connects by itself.</string>
+    <string name="photos">Photos &amp; videos</string>
+    <string name="files">Files</string>
+    <string name="send_to_pc">Send to PC</string>
+    <string name="transfers">Transfers</string>
+    <string name="clear">Clear finished</string>
+    <string name="empty">Nothing yet. Files from your PC are saved in Download/HotDrop.</string>
+</resources>
